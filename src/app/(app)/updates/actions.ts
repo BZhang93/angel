@@ -59,8 +59,16 @@ export async function rejectUpdate(form: FormData): Promise<void> {
   revalidatePath("/", "layout");
 }
 
-export async function runSync(): Promise<UpdateActionResult> {
+/// Syncs whatever query is in the box, saving it first. One button rather than
+/// save-then-sync: a query you can see but have not saved is a trap.
+export async function runSync(form: FormData): Promise<UpdateActionResult> {
   const userId = await requireUserId();
+  const syncQuery = String(form.get("syncQuery") ?? "").trim();
+  if (!syncQuery) return { status: "error", message: "A Gmail query is required." };
+
+  const updated = await prisma.gmailAccount.updateMany({ where: { userId }, data: { syncQuery } });
+  if (updated.count === 0) return { status: "error", message: "Connect Gmail first." };
+
   try {
     const sync = await syncGmail(userId);
     const extraction = await extractPendingUpdates(userId, extractFromUpdate);
@@ -74,14 +82,3 @@ export async function runSync(): Promise<UpdateActionResult> {
   }
 }
 
-export async function saveSyncQuery(form: FormData): Promise<UpdateActionResult> {
-  const userId = await requireUserId();
-  const syncQuery = String(form.get("syncQuery") ?? "").trim();
-  if (!syncQuery) return { status: "error", message: "A Gmail query is required." };
-
-  const updated = await prisma.gmailAccount.updateMany({ where: { userId }, data: { syncQuery } });
-  if (updated.count === 0) return { status: "error", message: "Connect Gmail first." };
-
-  revalidatePath("/settings");
-  return { status: "ok", message: "Sync query saved." };
-}

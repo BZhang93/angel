@@ -23,47 +23,51 @@ export function ScanPanel({
 
   return (
     <div className="space-y-3">
-      <form
-        className="flex flex-wrap items-end gap-2"
-        action={(form) => run(() => runScan(form))}
-      >
-        <label className="min-w-64 flex-1 text-sm">
-          <span className="text-muted">Gmail search query</span>
+      <form className="space-y-1" action={(form) => run(() => runScan(form))}>
+        <label htmlFor="query" className="block text-sm text-muted">
+          Gmail search query
+        </label>
+        <div className="flex items-center gap-2">
           <input
+            id="query"
             name="query"
             defaultValue={defaultQuery}
-            className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-1.5 font-mono text-sm"
+            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-1.5 font-mono text-sm"
           />
-          <span className="mt-0.5 block text-xs text-muted">
-            Widen it for a first import if your older deals were never labelled, for example{" "}
-            <code>label:investments OR subject:(SAFE OR &quot;investor update&quot;)</code>
-          </span>
-        </label>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
-        >
-          {pending ? "Scanning…" : "Scan Mailbox"}
-        </button>
+          <button
+            type="submit"
+            disabled={pending}
+            className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {pending ? "Scanning…" : "Scan Mailbox"}
+          </button>
+        </div>
+        <p className="text-xs text-muted">
+          Widen it for a first import if your older deals were never labelled, for example{" "}
+          <code>label:investments OR subject:(SAFE OR &quot;investor update&quot;)</code>. This one
+          is used for the scan only and does not change your saved sync query.
+        </p>
       </form>
 
-      {hasCandidates && (
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => run(importAll)}
-          className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60"
-        >
-          Import All Proposals
-        </button>
-      )}
-
-      {importedCount > 0 && (
-        <p className="text-xs text-muted">
-          {importedCount} compan{importedCount === 1 ? "y" : "ies"} already imported. Rescans skip
-          them.
-        </p>
+      {(hasCandidates || importedCount > 0) && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+          {hasCandidates && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(importAll)}
+              className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60"
+            >
+              Import All Proposals
+            </button>
+          )}
+          {importedCount > 0 && (
+            <p className="text-xs text-muted">
+              {importedCount} compan{importedCount === 1 ? "y" : "ies"} already imported. Rescans
+              skip them.
+            </p>
+          )}
+        </div>
       )}
 
       {result?.status === "error" && <p className="text-sm text-negative">{result.message}</p>}

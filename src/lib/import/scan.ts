@@ -59,10 +59,21 @@ export async function scanForCompanies(
   const query = opts.query ?? account.syncQuery;
   const ids = await listMessageIds(accessToken, query, { maxMessages: opts.maxMessages ?? 300 });
 
+  // One unreadable message must not lose a scan that has already fetched
+  // hundreds. Everything retryable is handled inside the client; what reaches
+  // here is a message that genuinely cannot be read.
   const emails: ScannedEmail[] = [];
+  let unreadable = 0;
   for (const id of ids) {
-    const email = await getMessage(accessToken, id);
-    if (email.text.trim()) emails.push(email);
+    try {
+      const email = await getMessage(accessToken, id);
+      if (email.text.trim()) emails.push(email);
+    } catch {
+      unreadable += 1;
+    }
+  }
+  if (emails.length === 0 && unreadable > 0) {
+    throw new Error(`Could not read any of the ${unreadable} messages Gmail returned.`);
   }
 
   // Domains already represented in the portfolio, so a rescan proposes only

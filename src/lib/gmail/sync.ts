@@ -45,7 +45,14 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
   let autoMatched = 0;
 
   for (const id of newIds) {
-    const email = await getMessage(accessToken, id);
+    let email;
+    try {
+      email = await getMessage(accessToken, id);
+    } catch {
+      // Skipped rather than fatal: the message has no Update row, so the next
+      // sync picks it up again.
+      continue;
+    }
     if (!email.text.trim()) continue;
 
     const match = matchCompany(email, candidates);

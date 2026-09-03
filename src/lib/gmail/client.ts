@@ -1,5 +1,12 @@
 import "server-only";
 import { parseMessage, type GmailMessage, type ParsedEmail } from "./parse";
+import {
+  backoffMs,
+  isRetryableStatus,
+  parseRetryAfter,
+  sleep,
+  throttle,
+} from "./throttle";
 
 // Gmail REST access over plain fetch. Read-only scope, no googleapis SDK: the
 // three endpoints this app needs are simpler than the dependency.
@@ -93,14 +100,30 @@ export async function accessTokenFromRefresh(refreshToken: string): Promise<stri
   return data.access_token;
 }
 
+const MAX_ATTEMPTS = 6;
+
+/// Every Gmail read goes through here: throttled to stay inside the per-minute
+/// quota, and retried with backoff when Google says to slow down. Without this,
+/// a scan of a few hundred messages reliably dies partway with a 403
+/// "Quota exceeded ... Units per minute per user".
 async function gmailGet<T>(accessToken: string, path: string): Promise<T> {
-  const response = await fetch(`${GMAIL_API}${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`Gmail ${path} failed (${response.status}): ${await response.text()}`);
+  for (let attempt = 0; ; attempt++) {
+    const response = await throttle(() =>
+      fetch(`${GMAIL_API}${path}`, { headers: { Authorization: `Bearer ${accessToken}` } }),
+    );
+
+    if (response.ok) return (await response.json()) as T;
+
+    const body = await response.text();
+    const canRetry = attempt < MAX_ATTEMPTS - 1 && isRetryableStatus(response.status, body);
+    if (!canRetry) {
+      throw new Error(`Gmail ${path} failed (${response.status}): ${body.slice(0, 500)}`);
+    }
+
+    await sleep(
+      backoffMs(attempt, { retryAfterSeconds: parseRetryAfter(response.headers.get("retry-after")) }),
+    );
   }
-  return (await response.json()) as T;
 }
 
 export async function getProfile(accessToken: string) {
