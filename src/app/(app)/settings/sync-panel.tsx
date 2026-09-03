@@ -34,7 +34,7 @@ export function SyncPanel({
             className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-1.5 font-mono text-sm"
           />
           <span className="mt-0.5 block text-xs text-muted">
-            Only messages matching this are ever read. Example:{" "}
+            Only messages matching this are ever read, by both sync and import. Example:{" "}
             <code>label:investments OR from:jane@acme.com</code>
           </span>
         </label>
@@ -43,7 +43,7 @@ export function SyncPanel({
           disabled={pending}
           className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60"
         >
-          Save
+          Save Query
         </button>
       </form>
 
