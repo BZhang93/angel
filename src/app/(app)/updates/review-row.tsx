@@ -44,14 +44,14 @@ export function ReviewRow({
           disabled={pending}
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
         >
-          {pending ? "Extracting…" : "Assign and extract"}
+          {pending ? "Extracting…" : "Assign and Extract"}
         </button>
         <button
           type="submit"
           formAction={rejectUpdate}
           className="rounded-md border border-border px-3 py-1.5 text-sm"
         >
-          Not an update
+          Not an Update
         </button>
       </form>
       {message && <p className="text-sm text-negative">{message}</p>}

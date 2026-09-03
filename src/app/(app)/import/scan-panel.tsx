@@ -44,7 +44,7 @@ export function ScanPanel({
           disabled={pending}
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
         >
-          {pending ? "Scanning…" : "Scan mailbox"}
+          {pending ? "Scanning…" : "Scan Mailbox"}
         </button>
       </form>
 
@@ -55,7 +55,7 @@ export function ScanPanel({
           onClick={() => run(importAll)}
           className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60"
         >
-          Import all proposals
+          Import All Proposals
         </button>
       )}
 

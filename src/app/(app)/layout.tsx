@@ -31,7 +31,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           {user && (
             <form action={logout}>
               <button type="submit" className="text-xs text-muted hover:text-foreground">
-                Sign out
+                Sign Out
               </button>
             </form>
           )}

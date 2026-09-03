@@ -11,9 +11,9 @@ import { createCompany } from "../actions";
 export default function NewCompanyPage() {
   return (
     <div className="max-w-3xl space-y-4">
-      <h1 className="text-lg font-semibold">Add company</h1>
+      <h1 className="text-lg font-semibold">Add Company</h1>
       <Card>
-        <ActionForm action={createCompany} submitLabel="Save company">
+        <ActionForm action={createCompany} submitLabel="Save Company">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Name" name="name" required placeholder="Acme Robotics" />
             <Field label="Website" name="website" placeholder="https://acme.com" />
@@ -26,7 +26,7 @@ export default function NewCompanyPage() {
           </div>
 
           <div className="border-t border-border pt-3">
-            <h2 className="text-sm font-semibold">First position</h2>
+            <h2 className="text-sm font-semibold">First Position</h2>
             <p className="mb-3 text-xs text-muted">
               Optional, but a company with no position is a note to self rather than an
               investment. Everything here can be edited later.

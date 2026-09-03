@@ -23,7 +23,7 @@ export default async function UpdatesPage() {
   if (pending.length === 0) {
     return (
       <EmptyState
-        title="Review queue is empty"
+        title="Review Queue Is Empty"
         body="Updates whose sender does not clearly belong to a portfolio company land here for assignment."
       />
     );
@@ -31,7 +31,7 @@ export default async function UpdatesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Review queue</h1>
+      <h1 className="text-lg font-semibold">Review Queue</h1>
       <p className="text-sm text-muted">
         {pending.length} update{pending.length === 1 ? "" : "s"} could not be matched confidently.
         Assigning one extracts it immediately.

@@ -18,7 +18,7 @@ export default async function CalendarPage() {
   if (dates.length === 0) {
     return (
       <EmptyState
-        title="No dates on file"
+        title="No Dates on File"
         body="Note maturities, QSBS five-year dates and action item deadlines appear here as soon as they exist."
       />
     );
@@ -29,7 +29,7 @@ export default async function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold">Key dates</h1>
+      <h1 className="text-lg font-semibold">Key Dates</h1>
 
       {overdue.length > 0 && (
         <Card title="Overdue">

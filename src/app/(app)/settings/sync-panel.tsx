@@ -54,7 +54,7 @@ export function SyncPanel({
           onClick={() => run(runSync)}
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
         >
-          {pending ? "Syncing…" : "Sync now"}
+          {pending ? "Syncing…" : "Sync Now"}
         </button>
         {pendingCount > 0 && (
           <Link href="/updates" className="text-sm underline">

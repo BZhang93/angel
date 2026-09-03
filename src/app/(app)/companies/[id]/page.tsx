@@ -99,7 +99,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       )}
 
       {summary && summary.signals.length > 0 && (
-        <Card title="Risk flags">
+        <Card title="Risk Flags">
           <ul className="space-y-2">
             {summary.signals.map((signal, index) => (
               <li key={`${signal.kind}-${index}`} className="flex items-start gap-2 text-sm">
@@ -177,7 +177,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                   )}
 
                   <details className="mt-3">
-                    <summary className="cursor-pointer text-xs text-muted">Add transaction</summary>
+                    <summary className="cursor-pointer text-xs text-muted">Add Transaction</summary>
                     <div className="mt-2">
                       <ActionForm action={addTransaction} submitLabel="Add" compact>
                         <input type="hidden" name="positionId" value={position.id} />
@@ -196,9 +196,9 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
         )}
 
         <details className="mt-4">
-          <summary className="cursor-pointer text-sm text-muted">Add another position</summary>
+          <summary className="cursor-pointer text-sm text-muted">Add Another Position</summary>
           <div className="mt-3">
-            <ActionForm action={addPosition} submitLabel="Add position">
+            <ActionForm action={addPosition} submitLabel="Add Position">
               <input type="hidden" name="companyId" value={company.id} />
               <div className="grid gap-3 sm:grid-cols-3">
                 <Select label="Instrument" name="instrumentType" options={INSTRUMENT_OPTIONS} />
@@ -249,9 +249,9 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
           )}
 
           <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-muted">Add mark</summary>
+            <summary className="cursor-pointer text-xs text-muted">Add Mark</summary>
             <div className="mt-2">
-              <ActionForm action={addValuation} submitLabel="Add mark" compact>
+              <ActionForm action={addValuation} submitLabel="Add Mark" compact>
                 <input type="hidden" name="companyId" value={company.id} />
                 <div className="grid gap-2 sm:grid-cols-2">
                   <Field label="Date" name="date" type="date" required />
@@ -264,7 +264,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
           </details>
         </Card>
 
-        <Card title="Action items">
+        <Card title="Action Items">
           {company.actionItems.length === 0 ? (
             <p className="py-2 text-sm text-muted">Nothing outstanding.</p>
           ) : (
@@ -294,7 +294,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
           )}
 
           <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-muted">Add action item</summary>
+            <summary className="cursor-pointer text-xs text-muted">Add Action Item</summary>
             <div className="mt-2">
               <ActionForm action={addActionItem} submitLabel="Add" compact>
                 <input type="hidden" name="companyId" value={company.id} />

@@ -21,9 +21,9 @@ export default async function ImportPage() {
   if (!account) {
     return (
       <EmptyState
-        title="Connect Gmail first"
+        title="Connect Gmail First"
         body="The importer reads the mail you have already labelled and proposes the companies it finds."
-        cta={{ href: "/settings", label: "Go to settings" }}
+        cta={{ href: "/settings", label: "Go to Settings" }}
       />
     );
   }
@@ -31,7 +31,7 @@ export default async function ImportPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-lg font-semibold">Import from Gmail</h1>
+        <h1 className="text-lg font-semibold">Import From Gmail</h1>
         <p className="mt-1 text-sm text-muted">
           Groups your labelled mail by sender company, keeps only the senders that show real
           evidence of an investment, and proposes each one with whatever terms the emails state.
@@ -49,7 +49,7 @@ export default async function ImportPage() {
 
       {candidates.length === 0 ? (
         <EmptyState
-          title="No proposals yet"
+          title="No Proposals Yet"
           body="Run a scan to read the mailbox. It takes a minute or two, and only reads what the query matches."
         />
       ) : (

@@ -19,9 +19,9 @@ export default async function DashboardPage() {
   if (summaries.length === 0) {
     return (
       <EmptyState
-        title="No investments yet"
+        title="No Investments Yet"
         body="Add the first company to start tracking terms, transactions, key dates and risk."
-        cta={{ href: "/companies/new", label: "Add a company" }}
+        cta={{ href: "/companies/new", label: "Add a Company" }}
       />
     );
   }
@@ -47,7 +47,7 @@ export default async function DashboardPage() {
           href="/companies/new"
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"
         >
-          Add company
+          Add Company
         </Link>
       </div>
 
@@ -68,7 +68,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Needs attention">
+        <Card title="Needs Attention">
           {risks.length === 0 ? (
             <p className="py-4 text-sm text-muted">
               No open risk flags. Every company has reported inside 90 days.
@@ -90,7 +90,7 @@ export default async function DashboardPage() {
           )}
         </Card>
 
-        <Card title="Next 180 days">
+        <Card title="Next 180 Days">
           {keyDates.length === 0 ? (
             <p className="py-4 text-sm text-muted">Nothing due in the next six months.</p>
           ) : (
@@ -115,7 +115,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-      <Card title="Concentration by sector">
+      <Card title="Concentration by Sector">
         <ul className="space-y-2">
           {bySector.map((bucket) => (
             <li key={bucket.label} className="flex items-center gap-3">
@@ -134,7 +134,7 @@ export default async function DashboardPage() {
         </ul>
       </Card>
 
-      <Card title="Deployed by vintage">
+      <Card title="Deployed by Vintage">
         <ul className="space-y-2">
           {byVintage.map((bucket) => (
             <li key={bucket.label} className="flex items-center gap-3">

@@ -11,9 +11,9 @@ export default async function CompaniesPage() {
   if (summaries.length === 0) {
     return (
       <EmptyState
-        title="No companies yet"
+        title="No Companies Yet"
         body="Add a company, then record the instrument and the money that went in."
-        cta={{ href: "/companies/new", label: "Add a company" }}
+        cta={{ href: "/companies/new", label: "Add a Company" }}
       />
     );
   }
@@ -26,7 +26,7 @@ export default async function CompaniesPage() {
           href="/companies/new"
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"
         >
-          Add company
+          Add Company
         </Link>
       </div>
 
@@ -40,7 +40,7 @@ export default async function CompaniesPage() {
               <th className="px-4 py-2 text-right font-medium">Value</th>
               <th className="px-4 py-2 text-right font-medium">MOIC</th>
               <th className="px-4 py-2 text-right font-medium">IRR</th>
-              <th className="px-4 py-2 font-medium">Last update</th>
+              <th className="px-4 py-2 font-medium">Last Update</th>
               <th className="px-4 py-2 font-medium">Flags</th>
             </tr>
           </thead>

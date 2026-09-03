@@ -68,7 +68,7 @@ export function CandidateCard({
           formAction={dismissCandidate}
           className="rounded-md border border-border px-3 py-1.5 text-sm"
         >
-          Not an investment
+          Not an Investment
         </button>
       </form>
       {error && <p className="mt-2 text-sm text-negative">{error}</p>}
