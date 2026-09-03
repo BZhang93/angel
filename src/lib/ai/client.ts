@@ -1,4 +1,7 @@
 import "server-only";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
@@ -10,13 +13,30 @@ import type { z } from "zod";
 
 const MODEL = process.env.AI_MODEL ?? "claude-opus-5";
 
+/// Credentials resolve the way the SDK resolves them, first match winning:
+/// ANTHROPIC_API_KEY, then ANTHROPIC_AUTH_TOKEN, then an `ant auth login`
+/// profile on disk. The profile path only exists on a developer machine, so a
+/// deployment still needs a key; locally it means no key has to be stored.
+function oauthProfileAvailable(): boolean {
+  const configDir =
+    process.env.ANTHROPIC_CONFIG_DIR ?? path.join(homedir(), ".config", "anthropic");
+  return existsSync(path.join(configDir, "credentials"));
+}
+
 export function aiConfigured(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY;
+  return (
+    !!process.env.ANTHROPIC_API_KEY ||
+    !!process.env.ANTHROPIC_AUTH_TOKEN ||
+    oauthProfileAvailable()
+  );
 }
 
 export class AiNotConfiguredError extends Error {
   constructor() {
-    super("AI is not configured (ANTHROPIC_API_KEY is not set).");
+    super(
+      "Claude is not configured. Set ANTHROPIC_API_KEY, or run `ant auth login` " +
+        "for local development (with ANTHROPIC_API_KEY unset, or the key wins).",
+    );
     this.name = "AiNotConfiguredError";
   }
 }
@@ -24,7 +44,9 @@ export class AiNotConfiguredError extends Error {
 let client: Anthropic | undefined;
 
 function getClient(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY) throw new AiNotConfiguredError();
+  if (!aiConfigured()) throw new AiNotConfiguredError();
+  // Constructed with no arguments on purpose: that is what lets the SDK fall
+  // through to the OAuth profile when no key is set.
   client ??= new Anthropic();
   return client;
 }

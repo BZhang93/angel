@@ -57,7 +57,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         <p className="text-sm text-muted">
           {aiConfigured()
             ? "Claude is configured. Update bodies are sent to Anthropic when an update is extracted; keep the sync query narrow so unrelated mail is never ingested."
-            : "ANTHROPIC_API_KEY is not set, so updates are stored but not extracted. Metrics, risks and asks stay empty until it is."}
+            : "No Claude credentials found, so updates are stored but not extracted. Set ANTHROPIC_API_KEY, or run `ant auth login` for local development."}
         </p>
       </Card>
     </div>
