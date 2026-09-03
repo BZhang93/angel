@@ -60,6 +60,9 @@ export default async function CompaniesPage() {
                     {company.instruments.map((instrument) => (
                       <Pill key={instrument}>{titleCase(instrument)}</Pill>
                     ))}
+                    {company.investmentGroups.map((group) => (
+                      <Pill key={group}>via {group}</Pill>
+                    ))}
                   </div>
                 </td>
                 <td className="tabular px-4 py-2 text-right">{money(company.deployed)}</td>

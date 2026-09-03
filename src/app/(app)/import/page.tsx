@@ -56,7 +56,19 @@ export default async function ImportPage() {
         <div className="space-y-3">
           {candidates.map((candidate) => {
             const proposal = parseProposal(candidate.payload);
-            if (!proposal) return null;
+            // A payload written by an older version of the extractor. Say so
+            // rather than rendering nothing, which reads as a bug.
+            if (!proposal) {
+              return (
+                <Card key={candidate.id}>
+                  <p className="text-sm text-muted">
+                    <span className="font-medium text-foreground">{candidate.proposedName}</span>{" "}
+                    was proposed by an earlier version of the importer and can no longer be read.
+                    Run Scan Mailbox again to rebuild it.
+                  </p>
+                </Card>
+              );
+            }
 
             return (
               <Card key={candidate.id}>
@@ -64,6 +76,9 @@ export default async function ImportPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-sm font-semibold">{proposal.name}</h2>
+                      {proposal.investmentGroup && (
+                        <Pill>via {proposal.investmentGroup}</Pill>
+                      )}
                       <Pill>{candidate.sourceDomain}</Pill>
                       <Pill>
                         {candidate.emailCount} email{candidate.emailCount === 1 ? "" : "s"}
@@ -95,6 +110,12 @@ export default async function ImportPage() {
                           )}
                           {position.discountPct != null && (
                             <span className="text-muted">{position.discountPct}% discount</span>
+                          )}
+                          {position.feesAmount != null && position.feesAmount > 0 && (
+                            <span className="text-muted">+ {money(position.feesAmount)} fees</span>
+                          )}
+                          {!position.amountConfirmed && (
+                            <span className="text-warn">committed, wire unconfirmed</span>
                           )}
                         </div>
                         <p className="mt-1 border-l-2 border-border pl-2 text-xs italic text-muted">

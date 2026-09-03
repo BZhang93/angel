@@ -105,3 +105,44 @@ describe("evidenceFor", () => {
     expect(evidence[3]!.subject).toBe("mail 0");
   });
 });
+
+describe("proposal schema", () => {
+  it("accepts a syndicate-held position and rejects the old single-company shape", async () => {
+    const { CompanyProposalSchema } = await import("./schema");
+
+    const viakaDeal = {
+      name: "Asendia",
+      investmentGroup: "Viaka",
+      website: null,
+      sector: "Logistics",
+      stage: "SEED" as const,
+      description: null,
+      contactName: null,
+      contactEmail: null,
+      confidence: 0.9,
+      notes: "Commitment only; wire deadline 2026-09-03.",
+      positions: [
+        {
+          instrumentType: "SPV_LP" as const,
+          amount: 3000,
+          feesAmount: 283.5,
+          investmentDate: "2026-09-03",
+          amountConfirmed: false,
+          valuationCap: null,
+          discountPct: null,
+          safeIsPostMoney: null,
+          interestRatePct: null,
+          maturityDate: null,
+          hasProRata: null,
+          sourceQuote: "Your commitment: $3,000 plus $283.50 in legal fees.",
+          confidence: 0.95,
+        },
+      ],
+    };
+
+    expect(CompanyProposalSchema.safeParse(viakaDeal).success).toBe(true);
+    expect(CompanyProposalSchema.safeParse({ isInvestment: true, name: "Viaka" }).success).toBe(
+      false,
+    );
+  });
+});

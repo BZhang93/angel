@@ -255,6 +255,13 @@ model Position {
   /// investmentDate is usually the highest-dollar date in an angel portfolio.
   qsbsEligible Boolean @default(false)
 
+  // -- Vehicle ---------------------------------------------------------------
+  /// The syndicate, SPV manager or platform the investment was made through
+  /// (e.g. "Viaka", "AngelList"). Belongs on the position, not the company: the
+  /// same company can be held directly and through a vehicle, on different
+  /// terms and with different fees.
+  investmentGroup String?
+
   // -- Conversion ------------------------------------------------------------
   /// Set when this SAFE/note converted. The original row is kept intact and
   /// points at the equity position it became.
@@ -479,9 +486,12 @@ model Document {
 model ImportCandidate {
   id           String         @id @default(uuid())
   userId       String
-  /// Sender domain the evidence was grouped by; the natural identity for a
-  /// company across a thread of emails.
+  /// Sender domain the evidence was grouped by. For a direct investment this is
+  /// the company's own domain; for a syndicate it is the manager's, and several
+  /// candidates share it.
   sourceDomain String
+  /// The syndicate or SPV manager, when the investment came through one.
+  investmentGroup String?
   proposedName String
   /// The full proposal (company fields, positions, transactions, each with a
   /// sourceQuote), shaped by src/lib/import/schema.ts.
@@ -496,6 +506,8 @@ model ImportCandidate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, sourceDomain])
+  /// One row per proposed company, not per sender: a syndicate's mail covers
+  /// several underlying companies and each is its own candidate.
+  @@unique([userId, sourceDomain, proposedName])
   @@index([userId, state])
 }

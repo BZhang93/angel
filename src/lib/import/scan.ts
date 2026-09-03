@@ -5,18 +5,28 @@ import { extractStructured } from "@/lib/ai/client";
 import { accessTokenFromRefresh, getMessage, listMessageIds } from "@/lib/gmail/client";
 import { domainOf } from "@/lib/gmail/match";
 import { evidenceFor, groupBySenderDomain, type DomainGroup, type ScannedEmail } from "./group";
-import { ProposalSchema, type Proposal } from "./schema";
+import { ScanGroupSchema, type ScanGroup } from "./schema";
 
-const SYSTEM = `You are reading a group of emails that all come from one company's domain, in the mailbox of an angel investor.
+const SYSTEM = `You are reading a group of emails that all come from one sender domain, in the mailbox of an angel investor.
 
-Decide whether these emails show that the investor actually invested money in this company, and if so, extract what the emails state about the company and the investment.
+Work out which operating companies the investor actually put money into, and extract what the emails state about each one.
 
-Rules:
-- isInvestment is true only with real evidence of money invested: a signed SAFE or note, a wire or payment confirmation, a countersigned document, a closing confirmation, or investor updates addressed to existing investors.
-- A cold pitch, a fundraising deck, a newsletter, a rejected deal, or an intro conversation is NOT an investment. Set isInvestment false and leave positions empty.
-- Every position needs sourceQuote: the verbatim sentence evidencing it. If you cannot quote the amount, set amount to null rather than guessing. A missing number is fine; an invented one is not.
-- Never infer terms from convention. If the cap is not written down, it is null.
-- Investor updates addressed to a list of investors are strong evidence of an investment, even when they never restate the amount. In that case set isInvestment true with an empty positions array, and say so in notes.
+Syndicates and SPVs are the case that matters most:
+- If the sender is a syndicate, SPV manager or investment platform (Viaka, AngelList, Carta, Republic, Allocations, and the like), the SENDER IS NOT A PORTFOLIO COMPANY. Never propose it.
+- Instead, return one entry per underlying operating company the emails show an investment in, and set investmentGroup to the manager's name on each. Three deals through one syndicate means three entries.
+- Set senderIsSyndicate true in that case.
+- For a direct investment from a company's own domain, return that one company with investmentGroup null.
+
+Amounts are where this goes wrong, so be strict:
+- amount is the READER's own investment. An SPV's total raise, the round size, or another investor's cheque is never the reader's amount. If only a total is stated, set amount null and say so in notes.
+- feesAmount is anything the reader paid on top: legal, admin, setup or carry paid up front.
+- amountConfirmed is true only when the emails show the money actually moved. A commitment with a future wire deadline is false, however firm the language.
+
+General rules:
+- Only report what the emails state. Never infer, never estimate, never fill a gap with a plausible number.
+- Every position needs sourceQuote: the verbatim sentence evidencing it. If you cannot quote the amount, set it null rather than guessing.
+- A cold pitch, a fundraising deck, a newsletter or a rejected deal is not an investment. Return an empty companies array with a one-line skippedReason.
+- Investor updates addressed to existing investors are strong evidence, even when they never restate the amount. Include the company with an empty positions array and say so in notes.
 - Report dates in ISO YYYY-MM-DD form.`;
 
 function evidenceText(group: DomainGroup, emails: ScannedEmail[]): string {
@@ -85,7 +95,7 @@ export async function scanForCompanies(
     }),
     prisma.importCandidate.findMany({
       where: { userId, state: { in: ["IMPORTED", "DISMISSED"] } },
-      select: { sourceDomain: true },
+      select: { sourceDomain: true, state: true, investmentGroup: true },
     }),
   ]);
 
@@ -98,7 +108,16 @@ export async function scanForCompanies(
       if (contactDomain) knownDomains.add(contactDomain);
     }
   }
-  for (const row of dismissed) knownDomains.add(row.sourceDomain);
+  // Skip a domain once it is settled, with one exception: a syndicate keeps
+  // sending new deals from the same address, so importing Asendia from Viaka
+  // must not stop the next scan finding Pintours.
+  for (const row of dismissed) {
+    const isSyndicateDomain = row.investmentGroup != null;
+    if (row.state === "DISMISSED" || !isSyndicateDomain) knownDomains.add(row.sourceDomain);
+  }
+  for (const row of dismissed) {
+    if (row.investmentGroup != null && row.state === "IMPORTED") knownDomains.delete(row.sourceDomain);
+  }
 
   const groups = groupBySenderDomain(emails, { knownDomains, minEmails: opts.minEmails ?? 1 });
 
@@ -106,12 +125,12 @@ export async function scanForCompanies(
   let skipped = 0;
 
   for (const group of groups) {
-    let proposal: Proposal;
+    let result: ScanGroup;
     try {
-      proposal = await extractStructured(
+      result = await extractStructured(
         SYSTEM,
         evidenceText(group, evidenceFor(group)),
-        ProposalSchema,
+        ScanGroupSchema,
       );
     } catch {
       // A group the model could not read is not a reason to abandon the scan.
@@ -119,45 +138,67 @@ export async function scanForCompanies(
       continue;
     }
 
-    if (!proposal.isInvestment) {
-      // Remember the rejection so the next scan does not pay to re-read it.
+    // Replace this domain's outstanding proposals rather than merging with
+    // them: a rescan is the newer, better reading, and a syndicate's company
+    // list changes between scans. Imported and dismissed rows are untouched.
+    await prisma.importCandidate.deleteMany({
+      where: { userId, sourceDomain: group.domain, state: "PROPOSED" },
+    });
+
+    if (result.companies.length === 0) {
+      // Remember the rejection so the next scan does not pay to re-read it. The
+      // domain, not a company name, is what gets skipped next time.
       await prisma.importCandidate.upsert({
-        where: { userId_sourceDomain: { userId, sourceDomain: group.domain } },
+        where: {
+          userId_sourceDomain_proposedName: {
+            userId,
+            sourceDomain: group.domain,
+            proposedName: group.guessedName,
+          },
+        },
         create: {
           userId,
           sourceDomain: group.domain,
-          proposedName: proposal.name || group.guessedName,
-          payload: proposal,
+          proposedName: group.guessedName,
+          payload: { skippedReason: result.skippedReason },
           emailCount: group.emails.length,
-          confidence: proposal.confidence,
           state: "DISMISSED",
         },
-        update: { state: "DISMISSED", payload: proposal },
+        update: { state: "DISMISSED", payload: { skippedReason: result.skippedReason } },
       });
       skipped += 1;
       continue;
     }
 
-    await prisma.importCandidate.upsert({
-      where: { userId_sourceDomain: { userId, sourceDomain: group.domain } },
-      create: {
-        userId,
-        sourceDomain: group.domain,
-        proposedName: proposal.name || group.guessedName,
-        payload: proposal,
-        emailCount: group.emails.length,
-        confidence: proposal.confidence,
-        state: "PROPOSED",
-      },
-      update: {
-        proposedName: proposal.name || group.guessedName,
-        payload: proposal,
-        emailCount: group.emails.length,
-        confidence: proposal.confidence,
-        state: "PROPOSED",
-      },
-    });
-    proposed += 1;
+    // One candidate per underlying company. A syndicate domain covering three
+    // deals produces three rows, each carrying the manager as its group.
+    for (const proposal of result.companies) {
+      const proposedName = proposal.name?.trim() || group.guessedName;
+
+      await prisma.importCandidate.upsert({
+        where: {
+          userId_sourceDomain_proposedName: { userId, sourceDomain: group.domain, proposedName },
+        },
+        create: {
+          userId,
+          sourceDomain: group.domain,
+          investmentGroup: proposal.investmentGroup,
+          proposedName,
+          payload: proposal,
+          emailCount: group.emails.length,
+          confidence: proposal.confidence,
+          state: "PROPOSED",
+        },
+        update: {
+          investmentGroup: proposal.investmentGroup,
+          payload: proposal,
+          emailCount: group.emails.length,
+          confidence: proposal.confidence,
+          state: "PROPOSED",
+        },
+      });
+      proposed += 1;
+    }
   }
 
   return { scanned: emails.length, domains: groups.length, proposed, skipped };

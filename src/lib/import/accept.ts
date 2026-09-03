@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { ProposalSchema, type Proposal } from "./schema";
+import { CompanyProposalSchema, type Proposal } from "./schema";
 
 // Turning an accepted proposal into portfolio rows. Kept separate from the scan
 // so accepting never depends on the LLM, and so the write path is one place.
@@ -14,7 +14,7 @@ function parseDate(value: string | null): Date | null {
 /// Re-validates the stored payload before writing: the JSON column is only as
 /// trustworthy as the run that produced it, and schemas change.
 export function parseProposal(payload: unknown): Proposal | null {
-  const result = ProposalSchema.safeParse(payload);
+  const result = CompanyProposalSchema.safeParse(payload);
   return result.success ? result.data : null;
 }
 
@@ -93,6 +93,7 @@ export async function acceptCandidate(
           userId,
           companyId: company.id,
           instrumentType: proposedPosition.instrumentType,
+          investmentGroup: proposal.investmentGroup,
           investmentDate,
           valuationCap: proposedPosition.valuationCap,
           discountPct: proposedPosition.discountPct,
@@ -112,6 +113,37 @@ export async function acceptCandidate(
             kind: "INVESTMENT",
             amount: proposedPosition.amount,
             date: investmentDate,
+          },
+        });
+      }
+
+      // Fees buy no ownership, so they go in the ledger as their own line and
+      // drag the return, which is the honest treatment.
+      if (proposedPosition.feesAmount != null && proposedPosition.feesAmount > 0) {
+        await tx.transaction.create({
+          data: {
+            userId,
+            positionId: position.id,
+            kind: "FEE",
+            amount: proposedPosition.feesAmount,
+            date: investmentDate,
+            notes: "Imported: fees stated alongside the commitment.",
+          },
+        });
+      }
+
+      // A commitment with a wire deadline is not money out of the account. The
+      // position is recorded either way, with a task to confirm it, because an
+      // unsent wire is exactly the thing that goes missing.
+      if (!proposedPosition.amountConfirmed) {
+        await tx.actionItem.create({
+          data: {
+            userId,
+            companyId: company.id,
+            kind: "FOLLOW_UP",
+            title: `Confirm the wire to ${name} was sent`,
+            detail: `Imported as a commitment rather than a confirmed payment. Source: "${proposedPosition.sourceQuote}"`,
+            dueDate: investmentDate,
           },
         });
       }

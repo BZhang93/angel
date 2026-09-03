@@ -40,6 +40,8 @@ export interface CompanySummary {
   moic: number | null;
   irr: number | null;
   instruments: string[];
+  /// Distinct syndicates or SPV managers the company is held through.
+  investmentGroups: string[];
   firstInvestmentAt: Date | null;
   lastUpdateAt: Date | null;
   signals: DerivedSignal[];
@@ -111,6 +113,13 @@ export async function getCompanySummaries(
       moic: moic(flows, mark),
       irr: irr(flows, { asOf, residualValue: unrealized }),
       instruments: [...new Set(company.positions.map((position) => position.instrumentType))],
+      investmentGroups: [
+        ...new Set(
+          company.positions
+            .map((position) => position.investmentGroup)
+            .filter((group): group is string => !!group),
+        ),
+      ],
       firstInvestmentAt,
       lastUpdateAt: lastUpdate?.receivedAt ?? null,
       signals: deriveCompanySignals(

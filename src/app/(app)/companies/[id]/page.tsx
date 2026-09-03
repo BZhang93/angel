@@ -146,6 +146,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold">{titleCase(position.instrumentType)}</h3>
+                      {position.investmentGroup && <Pill>via {position.investmentGroup}</Pill>}
                       {position.convertedIntoId && <Pill>Converted</Pill>}
                     </div>
                     <span className="tabular text-sm text-muted">{money(invested)} in</span>
