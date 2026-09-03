@@ -140,6 +140,13 @@ enum ActionState {
   DISMISSED
 }
 
+/// Lifecycle of a proposed import.
+enum CandidateState {
+  PROPOSED
+  IMPORTED
+  DISMISSED
+}
+
 enum DocumentKind {
   SAFE
   NOTE
@@ -457,4 +464,38 @@ model Document {
 
   @@index([userId])
   @@index([companyId])
+}
+
+// ---------------------------------------------------------------------------
+// Import
+// ---------------------------------------------------------------------------
+
+/// A company the mailbox scan believes is an investment, with whatever terms it
+/// could evidence. Persisted rather than held in memory so a scan is paid for
+/// once: reviewing, reloading and coming back tomorrow all reuse it.
+///
+/// Nothing here is portfolio data. It becomes a Company/Position/Transaction
+/// only when the user accepts it.
+model ImportCandidate {
+  id           String         @id @default(uuid())
+  userId       String
+  /// Sender domain the evidence was grouped by; the natural identity for a
+  /// company across a thread of emails.
+  sourceDomain String
+  proposedName String
+  /// The full proposal (company fields, positions, transactions, each with a
+  /// sourceQuote), shaped by src/lib/import/schema.ts.
+  payload      Json
+  /// How many emails the proposal was built from. One email is weak evidence.
+  emailCount   Int            @default(0)
+  confidence   Decimal?       @db.Decimal(4, 3)
+  state        CandidateState @default(PROPOSED)
+  /// Set once accepted, so the row records what it became.
+  companyId    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, sourceDomain])
+  @@index([userId, state])
 }
