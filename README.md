@@ -29,7 +29,7 @@ SEED_USER_ID=<your supabase auth user id> pnpm db:seed
 
 | Variable | What it is |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project, safe to expose |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase project, safe to expose. The older `NEXT_PUBLIC_SUPABASE_ANON_KEY` name is still accepted |
 | `DATABASE_URL` | Pooled connection (port 6543), used at runtime |
 | `DIRECT_URL` | Direct connection (port 5432), used by migrations and seeds |
 | `APP_ENCRYPTION_KEY` | 32 bytes base64. Encrypts the stored Gmail refresh token |
