@@ -1,0 +1,87 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/session";
+import { extractFromUpdate } from "@/lib/extract/update";
+import { applyExtraction, extractPendingUpdates } from "@/lib/extract/apply";
+import { syncGmail } from "@/lib/gmail/sync";
+
+export type UpdateActionResult = { status: "error"; message: string } | { status: "ok"; message: string } | void;
+
+/// Assigns a pending update to a company and immediately extracts it, so the
+/// review queue is one click rather than two screens.
+export async function confirmUpdate(form: FormData): Promise<UpdateActionResult> {
+  const userId = await requireUserId();
+  const updateId = String(form.get("updateId") ?? "");
+  const companyId = String(form.get("companyId") ?? "");
+  if (!companyId) return { status: "error", message: "Choose a company first." };
+
+  const [update, company] = await Promise.all([
+    prisma.update.findFirst({ where: { id: updateId, userId } }),
+    prisma.company.findFirst({ where: { id: companyId, userId } }),
+  ]);
+  if (!update || !company) return { status: "error", message: "Update or company not found." };
+
+  await prisma.update.update({
+    where: { id: updateId },
+    data: { companyId, reviewState: "CONFIRMED" },
+  });
+
+  try {
+    const extraction = await extractFromUpdate({
+      companyName: company.name,
+      subject: update.subject,
+      receivedAt: update.receivedAt,
+      text: update.rawText,
+    });
+    await applyExtraction(userId, updateId, companyId, extraction);
+  } catch (error) {
+    // The assignment stands even if extraction fails; it retries on the next run.
+    const message = error instanceof Error ? error.message : "Extraction failed.";
+    revalidatePath("/", "layout");
+    return { status: "error", message: `Assigned, but extraction failed: ${message}` };
+  }
+
+  revalidatePath("/", "layout");
+}
+
+export async function rejectUpdate(form: FormData): Promise<void> {
+  const userId = await requireUserId();
+  const updateId = String(form.get("updateId") ?? "");
+
+  const updated = await prisma.update.updateMany({
+    where: { id: updateId, userId },
+    data: { reviewState: "REJECTED" },
+  });
+  if (updated.count === 0) throw new Error("Update not found.");
+
+  revalidatePath("/", "layout");
+}
+
+export async function runSync(): Promise<UpdateActionResult> {
+  const userId = await requireUserId();
+  try {
+    const sync = await syncGmail(userId);
+    const extraction = await extractPendingUpdates(userId, extractFromUpdate);
+    revalidatePath("/", "layout");
+    return {
+      status: "ok",
+      message: `${sync.created} new (${sync.autoMatched} auto-matched, ${sync.pending} awaiting review). Extracted ${extraction.extracted}${extraction.failed ? `, ${extraction.failed} failed` : ""}.`,
+    };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Sync failed." };
+  }
+}
+
+export async function saveSyncQuery(form: FormData): Promise<UpdateActionResult> {
+  const userId = await requireUserId();
+  const syncQuery = String(form.get("syncQuery") ?? "").trim();
+  if (!syncQuery) return { status: "error", message: "A Gmail query is required." };
+
+  const updated = await prisma.gmailAccount.updateMany({ where: { userId }, data: { syncQuery } });
+  if (updated.count === 0) return { status: "error", message: "Connect Gmail first." };
+
+  revalidatePath("/settings");
+  return { status: "ok", message: "Sync query saved." };
+}

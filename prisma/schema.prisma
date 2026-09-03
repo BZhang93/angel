@@ -1,0 +1,460 @@
+// Angel Investment Tracker — Prisma schema.
+//
+// Model rules that the shape of this schema enforces (PRD §4):
+//   1. A position's value is never a stored number. Money in/out is a ledger of
+//      Transactions; worth is a series of Valuations. Invested, realized, MOIC
+//      and IRR are all computed from those.
+//   2. A convertible instrument that converts is LINKED to the position it
+//      became (Position.convertedInto), never mutated, so history is auditable.
+//   3. Every LLM-extracted row carries sourceQuote + confidence + editedByUser.
+//      Re-extraction must never overwrite a row a human has edited.
+//
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Prisma 7: connection URLs live outside the schema.
+//   - Migrations/seeds use DIRECT_URL (direct connection, port 5432) via prisma.config.ts.
+//   - The app passes the pooled DATABASE_URL (PgBouncer, port 6543) to PrismaClient
+//     at runtime in src/lib/prisma.ts.
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+/// Where a company ended up. UNKNOWN is the honest default for a company that
+/// has simply gone quiet — see Signal.kind RISK / the silence rule.
+enum CompanyStatus {
+  ACTIVE
+  ACQUIRED
+  IPO
+  SHUT_DOWN
+  UNKNOWN
+}
+
+/// Rough stage at the time of investment; used for portfolio concentration.
+enum Stage {
+  PRE_SEED
+  SEED
+  SERIES_A
+  SERIES_B
+  SERIES_C_PLUS
+  GROWTH
+  UNKNOWN
+}
+
+enum InstrumentType {
+  SAFE
+  CONVERTIBLE_NOTE
+  PRICED_EQUITY
+  SPV_LP
+  TOKEN_WARRANT
+  OTHER
+}
+
+/// The legal entity holding the position. Drives tax treatment, so it is a
+/// first-class field rather than a note.
+enum HoldingEntity {
+  PERSONAL
+  LLC
+  TRUST
+  IRA
+  OTHER
+}
+
+/// Money movements. INVESTMENT and CAPITAL_CALL are cash out; DISTRIBUTION and
+/// SECONDARY_SALE are cash in; FEE is cash out that buys no ownership;
+/// WRITE_OFF records a loss with a zero amount and a date for the tax year.
+enum TransactionKind {
+  INVESTMENT
+  CAPITAL_CALL
+  FEE
+  DISTRIBUTION
+  SECONDARY_SALE
+  WRITE_OFF
+}
+
+/// How much a mark can be trusted, most reliable first.
+enum ValuationSource {
+  ROUND
+  SECONDARY
+  FOUR_O_NINE_A
+  ESTIMATE
+}
+
+/// Lifecycle of an ingested email. Nothing is auto-assigned to a company below
+/// the match-confidence threshold; it waits in PENDING for review.
+enum ReviewState {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+/// Metrics worth trending. Deliberately a closed set: free-form keys make
+/// charts impossible.
+enum MetricKey {
+  ARR
+  MRR
+  REVENUE
+  CASH
+  BURN
+  RUNWAY_MONTHS
+  HEADCOUNT
+  CUSTOMERS
+  GROWTH_RATE
+}
+
+enum SignalKind {
+  RISK
+  ASK
+  MILESTONE
+  PERSONNEL_CHANGE
+  FUNDRAISE
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ActionKind {
+  PRO_RATA
+  CONSENT
+  TAX_DOC
+  INTRO
+  FOLLOW_UP
+}
+
+enum ActionState {
+  OPEN
+  DONE
+  DISMISSED
+}
+
+enum DocumentKind {
+  SAFE
+  NOTE
+  SIDE_LETTER
+  EQUITY_DOCS
+  CAP_TABLE
+  K1
+  TAX_OTHER
+  OTHER
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio core
+// ---------------------------------------------------------------------------
+
+/// A company in the portfolio. One company can hold several Positions (e.g. a
+/// 2023 SAFE and a 2025 Series A allocation are different instruments).
+model Company {
+  id          String        @id @default(uuid())
+  /// Supabase auth user id. Single-user today, but present from day one so RLS
+  /// can be switched on without a migration.
+  userId      String
+  name        String
+  website     String?
+  description String?
+  sector      String?
+  stage       Stage         @default(UNKNOWN)
+  hqCountry   String?
+  status      CompanyStatus @default(ACTIVE)
+  /// Who introduced the deal. Worth tracking: source quality is itself a signal.
+  sourcedBy   String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  positions   Position[]
+  valuations  Valuation[]
+  updates     Update[]
+  signals     Signal[]
+  actionItems ActionItem[]
+  documents   Document[]
+  contacts    Contact[]
+
+  @@unique([userId, name])
+  @@index([userId, status])
+}
+
+/// A founder or investor-relations contact. Sender addresses here are one of the
+/// ways an inbound Update gets matched to a Company (PRD §6).
+model Contact {
+  id        String  @id @default(uuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  role      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([email])
+}
+
+/// One instrument in one company. Terms are all nullable because each type uses
+/// a different subset; the UI shows only the fields relevant to instrumentType.
+model Position {
+  id             String         @id @default(uuid())
+  userId         String
+  companyId      String
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  instrumentType InstrumentType
+  holdingEntity  HoldingEntity  @default(PERSONAL)
+  /// Date the money went in. Starts the QSBS five-year clock and the IRR clock.
+  investmentDate DateTime
+  currency       String         @default("USD")
+
+  // -- SAFE / convertible note terms -----------------------------------------
+  valuationCap    Decimal? @db.Decimal(18, 2)
+  discountPct     Decimal? @db.Decimal(5, 2)
+  /// Post-money SAFEs do not dilute each other; pre-money ones do. Materially
+  /// changes the ownership math, so it is stored, not inferred.
+  safeIsPostMoney Boolean?
+  hasMfn          Boolean  @default(false)
+  /// Pro-rata side letter. Drives the PRO_RATA action items that cost real money
+  /// when missed.
+  hasProRata      Boolean  @default(false)
+  interestRatePct Decimal? @db.Decimal(5, 2)
+  maturityDate    DateTime?
+
+  // -- Priced equity terms ---------------------------------------------------
+  shareClass              String?
+  shareCount              Decimal? @db.Decimal(18, 4)
+  pricePerShare           Decimal? @db.Decimal(18, 6)
+  liquidationPreferenceX  Decimal? @db.Decimal(5, 2)
+  ownershipPct            Decimal? @db.Decimal(8, 5)
+
+  // -- SPV / syndicate terms -------------------------------------------------
+  committedAmount  Decimal? @db.Decimal(18, 2)
+  managementFeePct Decimal? @db.Decimal(5, 2)
+  carryPct         Decimal? @db.Decimal(5, 2)
+
+  // -- Tax -------------------------------------------------------------------
+  /// Qualified Small Business Stock (IRC §1202). The five-year date derived from
+  /// investmentDate is usually the highest-dollar date in an angel portfolio.
+  qsbsEligible Boolean @default(false)
+
+  // -- Conversion ------------------------------------------------------------
+  /// Set when this SAFE/note converted. The original row is kept intact and
+  /// points at the equity position it became.
+  convertedIntoId String?   @unique
+  convertedInto   Position? @relation("Conversion", fields: [convertedIntoId], references: [id], onDelete: SetNull)
+  convertedFrom   Position? @relation("Conversion")
+  convertedAt     DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  documents    Document[]
+
+  @@index([userId])
+  @@index([companyId])
+}
+
+/// The money ledger. Totals are always summed from here, never stored on
+/// Position, so follow-ons, capital calls and partial secondaries stay correct.
+model Transaction {
+  id         String          @id @default(uuid())
+  userId     String
+  positionId String
+  position   Position        @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  kind       TransactionKind
+  amount     Decimal         @db.Decimal(18, 2)
+  currency   String          @default("USD")
+  date       DateTime
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([positionId, date])
+}
+
+/// A mark on a company at a point in time. The latest one drives unrealized
+/// value; a lower one than its predecessor raises a down-round signal.
+model Valuation {
+  id                 String          @id @default(uuid())
+  userId             String
+  companyId          String
+  company            Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  date               DateTime
+  pricePerShare      Decimal?        @db.Decimal(18, 6)
+  postMoneyValuation Decimal?        @db.Decimal(18, 2)
+  source             ValuationSource @default(ESTIMATE)
+  notes              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([companyId, date])
+}
+
+// ---------------------------------------------------------------------------
+// Email ingestion + extraction
+// ---------------------------------------------------------------------------
+
+/// The connected Gmail mailbox. Read-only scope; the refresh token is encrypted
+/// at rest and never leaves the server.
+model GmailAccount {
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  emailAddress          String
+  /// AES-GCM ciphertext of the OAuth refresh token, never the raw token.
+  refreshTokenEncrypted String
+  /// Gmail query bounding what is ingested. Kept narrow on purpose: unrelated
+  /// mail must never reach the LLM.
+  syncQuery             String    @default("label:investments")
+  /// Cursor for incremental history-API syncs.
+  lastHistoryId         String?
+  lastSyncedAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// One ingested investor-update email.
+model Update {
+  id              String      @id @default(uuid())
+  userId          String
+  /// Null until matched. Low-confidence matches stay PENDING for human review
+  /// rather than being auto-assigned.
+  companyId       String?
+  company         Company?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  gmailMessageId  String
+  gmailThreadId   String?
+  receivedAt      DateTime
+  fromAddress     String
+  fromName        String?
+  subject         String?
+  rawText         String
+  summary         String?
+  matchConfidence Decimal?    @db.Decimal(4, 3)
+  reviewState     ReviewState @default(PENDING)
+  /// Null until the extraction pass has run on this update.
+  extractedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  metrics     UpdateMetric[]
+  signals     Signal[]
+  actionItems ActionItem[]
+
+  @@unique([userId, gmailMessageId])
+  @@index([userId, receivedAt])
+  @@index([companyId, receivedAt])
+}
+
+/// A number pulled out of an update. sourceQuote/confidence/editedByUser are the
+/// provenance contract: extraction may only overwrite rows where
+/// editedByUser is false.
+model UpdateMetric {
+  id           String    @id @default(uuid())
+  updateId     String
+  update       Update    @relation(fields: [updateId], references: [id], onDelete: Cascade)
+  key          MetricKey
+  value        Decimal   @db.Decimal(18, 2)
+  unit         String?
+  /// Period the number describes, as written ("Q3 2026", "August").
+  periodLabel  String?
+  sourceQuote  String?
+  confidence   Decimal?  @db.Decimal(4, 3)
+  editedByUser Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updateId])
+}
+
+/// A risk, ask or notable event. Either extracted from an update or derived
+/// deterministically (derived = true, updateId = null) by src/lib/signals.ts.
+model Signal {
+  id           String     @id @default(uuid())
+  userId       String
+  companyId    String
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  updateId     String?
+  update       Update?    @relation(fields: [updateId], references: [id], onDelete: Cascade)
+  kind         SignalKind
+  severity     Severity   @default(MEDIUM)
+  summary      String
+  sourceQuote  String?
+  confidence   Decimal?   @db.Decimal(4, 3)
+  derived      Boolean    @default(false)
+  editedByUser Boolean    @default(false)
+  dismissedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, kind])
+  @@index([companyId])
+  @@index([updateId])
+}
+
+/// Something requiring a decision, usually with a deadline attached.
+model ActionItem {
+  id           String      @id @default(uuid())
+  userId       String
+  companyId    String
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  updateId     String?
+  update       Update?     @relation(fields: [updateId], references: [id], onDelete: SetNull)
+  kind         ActionKind
+  title        String
+  detail       String?
+  dueDate      DateTime?
+  state        ActionState @default(OPEN)
+  sourceQuote  String?
+  editedByUser Boolean     @default(false)
+  completedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, state, dueDate])
+  @@index([companyId])
+}
+
+/// A file in Supabase Storage: signed SAFE, side letter, cap table, K-1.
+model Document {
+  id          String       @id @default(uuid())
+  userId      String
+  companyId   String?
+  company     Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  positionId  String?
+  position    Position?    @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  kind        DocumentKind @default(OTHER)
+  title       String
+  /// Path within the private Supabase Storage bucket; signed URLs are minted
+  /// per request, never stored.
+  storagePath String
+  sizeBytes   Int?
+  mimeType    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([companyId])
+}

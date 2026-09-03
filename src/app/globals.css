@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+/* A quiet, dense palette. This is a financial tool that gets scanned, not a
+   marketing page: neutral ground, one accent, and colour reserved for risk. */
+:root {
+  --background: #fbfbfa;
+  --surface: #ffffff;
+  --border: #e5e3df;
+  --foreground: #1c1b19;
+  --muted: #6b6862;
+  --accent: #1f5f4f;
+  --positive: #1f7a4d;
+  --negative: #a12f2f;
+  --warn: #9a6218;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #131311;
+    --surface: #1b1b19;
+    --border: #302f2c;
+    --foreground: #eceae5;
+    --muted: #a09d96;
+    --accent: #6fbfa5;
+    --positive: #5fbc88;
+    --negative: #e08585;
+    --warn: #d5a350;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warn: var(--warn);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Tabular figures everywhere numbers line up in a column. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
