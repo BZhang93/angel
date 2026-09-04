@@ -19,7 +19,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex w-full max-w-6xl items-center gap-6 px-6 py-3">
           <Link href="/" className="text-sm font-semibold tracking-tight">
-            Angel
+            angel flight
           </Link>
           <nav className="flex flex-1 items-center gap-4 text-sm text-muted">
             {NAV.map((item) => (

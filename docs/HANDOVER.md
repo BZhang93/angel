@@ -1,4 +1,4 @@
-# Angel: handover
+# Angel Flight: handover
 
 A private, single-user angel portfolio tracker. It holds the portfolio as structured data and
 builds most of it from Gmail: what you own, on what terms, what it cost, what is at risk, and what

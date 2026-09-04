@@ -17,7 +17,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-full flex-1 items-center justify-center px-6 py-16">
       <div className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold">Angel</h1>
+        <h1 className="text-lg font-semibold">angel flight</h1>
         <p className="mt-1 text-sm text-muted">
           Private portfolio tracker. Sign in to continue.
         </p>

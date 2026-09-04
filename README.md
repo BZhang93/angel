@@ -1,4 +1,4 @@
-# Angel
+# Angel Flight
 
 A private, single-user tracker for angel investments: what you own, on what terms, what it is
 worth, what is at risk, and what you have to do next. Investor updates are pulled from Gmail and
