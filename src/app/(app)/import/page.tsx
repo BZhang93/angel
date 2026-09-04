@@ -1,6 +1,9 @@
 import { Card, EmptyState, Pill } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { parseProposal, previewAccept } from "@/lib/import/accept";
+import { isCompanyDomain } from "@/lib/import/domains";
+import { normalizeCompanyName } from "@/lib/import/identity";
+import { domainOfWebsite } from "@/lib/import/identity";
 import { money, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
 import { latestRun } from "@/lib/progress";
@@ -15,12 +18,22 @@ export default async function ImportPage() {
     prisma.gmailAccount.findUnique({ where: { userId } }),
     prisma.importCandidate.findMany({
       where: { userId, state: "PROPOSED" },
-      orderBy: [{ confidence: "desc" }, { emailCount: "desc" }],
+      orderBy: [{ proposedName: "asc" }, { confidence: "desc" }],
     }),
     prisma.importCandidate.count({ where: { userId, state: "IMPORTED" } }),
     latestRun(userId, "IMPORT_SCAN"),
   ]);
   const running = run?.state === "RUNNING";
+
+  // The same company often arrives from two senders: the syndicate's own mail
+  // and the bank transfer confirming it. Shown together rather than as two
+  // unrelated cards, because importing both is the right move: one supplies the
+  // terms, the other the amount.
+  const siblingsByName = new Map<string, string[]>();
+  for (const candidate of candidates) {
+    const key = normalizeCompanyName(candidate.proposedName);
+    siblingsByName.set(key, [...(siblingsByName.get(key) ?? []), candidate.sourceDomain]);
+  }
 
   if (!account) {
     return (
@@ -85,6 +98,9 @@ export default async function ImportPage() {
                 </Card>
               );
             }
+
+            const siblings = (siblingsByName.get(normalizeCompanyName(candidate.proposedName)) ?? [])
+              .filter((domain) => domain !== candidate.sourceDomain);
 
             return (
               <Card key={candidate.id}>
@@ -151,14 +167,25 @@ export default async function ImportPage() {
                   <p className="mt-2 text-xs text-warn">{proposal.notes}</p>
                 )}
 
+                {siblings.length > 0 && (
+                  <p className="mt-2 text-xs text-muted">
+                    Also proposed from {siblings.join(", ")}. Import both: they combine into one
+                    company, and one source usually supplies terms the other lacks.
+                  </p>
+                )}
+
                 <CandidateCard
                   id={candidate.id}
                   name={proposal.name}
-                  website={proposal.website ?? `https://${candidate.sourceDomain}`}
+                  website={
+                    isCompanyDomain(domainOfWebsite(proposal.website)) ? proposal.website! : ""
+                  }
                   sector={proposal.sector ?? ""}
                   mergeHint={await previewAccept(userId, {
                     name: proposal.name,
-                    website: proposal.website ?? `https://${candidate.sourceDomain}`,
+                    website: isCompanyDomain(domainOfWebsite(proposal.website))
+                      ? proposal.website
+                      : null,
                   })}
                 />
               </Card>

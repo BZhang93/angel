@@ -2,6 +2,8 @@
 // grouping rules are where a mailbox scan quietly goes wrong, by proposing
 // "Gmail" and "Substack" as portfolio companies.
 
+import { NON_COMPANY_DOMAINS as BLOCKED } from "./domains";
+
 export interface ScannedEmail {
   gmailMessageId: string;
   fromAddress: string;
@@ -26,39 +28,7 @@ export interface DomainGroup {
   guessedName: string;
 }
 
-/// Consumer mail hosts and bulk senders. An investor update genuinely sent from
-/// a personal Gmail address still gets found, because it lands in the review
-/// queue by subject rather than being silently grouped under "gmail.com".
-export const NON_COMPANY_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "outlook.com",
-  "hotmail.com",
-  "yahoo.com",
-  "icloud.com",
-  "me.com",
-  "aol.com",
-  "proton.me",
-  "protonmail.com",
-  "substack.com",
-  "mailchimp.com",
-  "mailchimpapp.net",
-  "sendgrid.net",
-  "docusign.net",
-  "docusign.com",
-  "hellosign.com",
-  "dropbox.com",
-  "notion.so",
-  "google.com",
-  "linkedin.com",
-  "carta.com",
-  "angellist.com",
-  "republic.com",
-  "wefunder.com",
-  "stripe.com",
-  "mercury.com",
-  "brex.com",
-]);
+export { NON_COMPANY_DOMAINS } from "./domains";
 
 export function domainOfAddress(address: string): string | null {
   const at = address.lastIndexOf("@");
@@ -102,7 +72,7 @@ export function groupBySenderDomain(
   for (const email of emails) {
     const domain = domainOfAddress(email.fromAddress);
     if (!domain) continue;
-    if (NON_COMPANY_DOMAINS.has(domain)) continue;
+    if (BLOCKED.has(domain)) continue;
     if (known.has(domain)) continue;
 
     const bucket = groups.get(domain) ?? [];

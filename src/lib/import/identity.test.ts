@@ -43,6 +43,29 @@ describe("findExistingCompany", () => {
     expect(findExistingCompany({ name: "Northwind Labs", website: null }, existing)).toBeNull();
   });
 
+  it("never treats a syndicate or bank domain as company identity", () => {
+    // The bug this guards: proposals fell back to the sender's domain, so every
+    // company a syndicate emailed about shared a "website" and merged into one.
+    const portfolio: ExistingCompany[] = [
+      { id: "asendia", name: "Asendia AI", website: "https://viaka.net" },
+    ];
+    expect(findExistingCompany({ name: "Pintours", website: "https://viaka.net" }, portfolio)).toBeNull();
+    expect(
+      findExistingCompany(
+        { name: "Saile", website: "https://mail.transfers.bankofamerica.com" },
+        [{ id: "pintours", name: "Pintours", website: "https://mail.transfers.bankofamerica.com" }],
+      ),
+    ).toBeNull();
+  });
+
+  it("still merges two records of the same company by name", () => {
+    // Pintours arriving from viaka.net and from the bank is one company.
+    const portfolio: ExistingCompany[] = [{ id: "pintours", name: "Pintours", website: null }];
+    expect(
+      findExistingCompany({ name: "Pintours", website: "https://viaka.net" }, portfolio),
+    ).toMatchObject({ reason: "name" });
+  });
+
   it("prefers a domain match over a name match", () => {
     const both: ExistingCompany[] = [
       { id: "by-name", name: "Bravi", website: null },

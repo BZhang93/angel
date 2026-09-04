@@ -61,6 +61,8 @@ export function domainOfWebsite(website: string | null | undefined): string | nu
   return host || null;
 }
 
+import { isCompanyDomain } from "./domains";
+
 export interface ExistingCompany {
   id: string;
   name: string;
@@ -78,11 +80,15 @@ export function findExistingCompany(
   incoming: { name: string; website?: string | null },
   existing: ExistingCompany[],
 ): { company: ExistingCompany; reason: MatchReason } | null {
-  const incomingDomain = domainOfWebsite(incoming.website);
+  // A syndicate's or a bank's domain is not a website. Treating one as identity
+  // would merge every company that sender ever wrote about into a single entry.
+  const rawDomain = domainOfWebsite(incoming.website);
+  const incomingDomain = isCompanyDomain(rawDomain) ? rawDomain : null;
   if (incomingDomain) {
-    const byDomain = existing.find(
-      (company) => domainOfWebsite(company.website) === incomingDomain,
-    );
+    const byDomain = existing.find((company) => {
+      const domain = domainOfWebsite(company.website);
+      return isCompanyDomain(domain) && domain === incomingDomain;
+    });
     if (byDomain) return { company: byDomain, reason: "domain" };
   }
 

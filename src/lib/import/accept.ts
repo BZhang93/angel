@@ -1,7 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { CompanyProposalSchema, type Proposal } from "./schema";
-import { findExistingCompany } from "./identity";
+import { findExistingCompany, domainOfWebsite } from "./identity";
+import { isCompanyDomain } from "./domains";
 
 // Turning an accepted proposal into portfolio rows. Kept separate from the scan
 // so accepting never depends on the LLM, and so the write path is one place.
@@ -33,7 +34,7 @@ export async function previewAccept(
   if (!match) return null;
   return {
     mergesInto: match.company.name,
-    reason: match.reason === "domain" ? "same website" : "same name",
+    reason: match.reason === "domain" ? "same company website" : "same name",
   };
 }
 
@@ -63,10 +64,11 @@ export async function acceptCandidate(
   const name = (overrides.name ?? proposal.name ?? candidate.proposedName).trim();
   if (!name) return { error: "A company name is required." };
 
-  const website =
-    overrides.website !== undefined
-      ? overrides.website
-      : (proposal.website ?? `https://${candidate.sourceDomain}`);
+  // Only a plausible company site is kept. The sender's domain is never it: a
+  // Viaka or Bank of America address describes how the mail arrived, not who
+  // the company is.
+  const proposedWebsite = overrides.website !== undefined ? overrides.website : proposal.website;
+  const website = isCompanyDomain(domainOfWebsite(proposedWebsite)) ? proposedWebsite : null;
   const sector = overrides.sector !== undefined ? overrides.sector : proposal.sector;
 
   // Consolidate rather than duplicate. The same business arrives twice often
