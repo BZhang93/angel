@@ -1,22 +1,26 @@
 import { Card, EmptyState, Pill } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
-import { parseProposal } from "@/lib/import/accept";
+import { parseProposal, previewAccept } from "@/lib/import/accept";
 import { money, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
+import { latestRun } from "@/lib/progress";
 import { CandidateCard } from "./candidate-card";
 import { ScanPanel } from "./scan-panel";
+import { ScanProgress } from "./scan-progress";
 
 export default async function ImportPage() {
   const userId = await requireUserId();
 
-  const [account, candidates, importedCount] = await Promise.all([
+  const [account, candidates, importedCount, run] = await Promise.all([
     prisma.gmailAccount.findUnique({ where: { userId } }),
     prisma.importCandidate.findMany({
       where: { userId, state: "PROPOSED" },
       orderBy: [{ confidence: "desc" }, { emailCount: "desc" }],
     }),
     prisma.importCandidate.count({ where: { userId, state: "IMPORTED" } }),
+    latestRun(userId, "IMPORT_SCAN"),
   ]);
+  const running = run?.state === "RUNNING";
 
   if (!account) {
     return (
@@ -40,21 +44,33 @@ export default async function ImportPage() {
       </div>
 
       <Card title="Scan">
+        <ScanProgress
+          running={running}
+          step={run?.step ?? null}
+          doneItems={run?.doneItems ?? 0}
+          totalItems={run?.totalItems ?? 0}
+          produced={run?.produced ?? 0}
+        />
+        <div className={running ? "mt-3" : ""}>
         <ScanPanel
           defaultQuery={account.syncQuery}
           hasCandidates={candidates.length > 0}
           importedCount={importedCount}
+          running={running}
         />
+        </div>
       </Card>
 
       {candidates.length === 0 ? (
-        <EmptyState
-          title="No Proposals Yet"
-          body="Run a scan to read the mailbox. It takes a minute or two, and only reads what the query matches."
-        />
+        running ? null : (
+          <EmptyState
+            title="No Proposals Yet"
+            body="Run a scan to read the mailbox. It takes a minute or two, and only reads what the query matches."
+          />
+        )
       ) : (
         <div className="space-y-3">
-          {candidates.map((candidate) => {
+          {await Promise.all(candidates.map(async (candidate) => {
             const proposal = parseProposal(candidate.payload);
             // A payload written by an older version of the extractor. Say so
             // rather than rendering nothing, which reads as a bug.
@@ -140,10 +156,14 @@ export default async function ImportPage() {
                   name={proposal.name}
                   website={proposal.website ?? `https://${candidate.sourceDomain}`}
                   sector={proposal.sector ?? ""}
+                  mergeHint={await previewAccept(userId, {
+                    name: proposal.name,
+                    website: proposal.website ?? `https://${candidate.sourceDomain}`,
+                  })}
                 />
               </Card>
             );
-          })}
+          }))}
         </div>
       )}
     </div>

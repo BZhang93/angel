@@ -7,18 +7,23 @@ export function ScanPanel({
   defaultQuery,
   hasCandidates,
   importedCount,
+  running,
 }: {
   defaultQuery: string;
   hasCandidates: boolean;
   importedCount: number;
+  /// A scan started elsewhere (or before a reload) is still going: the button
+  /// stays disabled so it cannot be launched twice.
+  running: boolean;
 }) {
   const [result, setResult] = useState<ImportResult>(undefined);
-  const [pending, setPending] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const pending = submitting || running;
 
   async function run(work: () => Promise<ImportResult>) {
-    setPending(true);
+    setSubmitting(true);
     setResult(await work());
-    setPending(false);
+    setSubmitting(false);
   }
 
   return (

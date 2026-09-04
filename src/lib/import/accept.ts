@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { CompanyProposalSchema, type Proposal } from "./schema";
+import { findExistingCompany } from "./identity";
 
 // Turning an accepted proposal into portfolio rows. Kept separate from the scan
 // so accepting never depends on the LLM, and so the write path is one place.
@@ -16,6 +17,24 @@ function parseDate(value: string | null): Date | null {
 export function parseProposal(payload: unknown): Proposal | null {
   const result = CompanyProposalSchema.safeParse(payload);
   return result.success ? result.data : null;
+}
+
+/// What accepting this candidate will do, for the review screen: joining an
+/// existing company or creating a new one.
+export async function previewAccept(
+  userId: string,
+  input: { name: string; website: string | null },
+): Promise<{ mergesInto: string; reason: string } | null> {
+  const existing = await prisma.company.findMany({
+    where: { userId },
+    select: { id: true, name: true, website: true },
+  });
+  const match = findExistingCompany(input, existing);
+  if (!match) return null;
+  return {
+    mergesInto: match.company.name,
+    reason: match.reason === "domain" ? "same website" : "same name",
+  };
 }
 
 export interface AcceptOverrides {
@@ -50,22 +69,40 @@ export async function acceptCandidate(
       : (proposal.website ?? `https://${candidate.sourceDomain}`);
   const sector = overrides.sector !== undefined ? overrides.sector : proposal.sector;
 
+  // Consolidate rather than duplicate. The same business arrives twice often
+  // enough to matter: directly and through a syndicate, or as "Bravi" one month
+  // and "Bravi Inc." the next. A match adds positions to the company that
+  // already exists; only a genuinely new name creates one.
+  const existing = await prisma.company.findMany({
+    where: { userId },
+    select: { id: true, name: true, website: true },
+  });
+  const match = findExistingCompany({ name, website }, existing);
+
   const companyId = await prisma.$transaction(async (tx) => {
-    const company = await tx.company.upsert({
-      where: { userId_name: { userId, name } },
-      create: {
-        userId,
-        name,
-        website,
-        sector,
-        description: proposal.description,
-        stage: proposal.stage,
-        status: "ACTIVE",
-        sourcedBy: "Gmail import",
-        notes: proposal.notes ? `Import note: ${proposal.notes}` : null,
-      },
-      update: {},
-    });
+    const company = match
+      ? await tx.company.update({
+          where: { id: match.company.id },
+          // Fill gaps on the existing record, never overwrite what is there.
+          data: {
+            website: match.company.website ?? website,
+            sector: sector ?? undefined,
+            description: proposal.description ?? undefined,
+          },
+        })
+      : await tx.company.create({
+          data: {
+            userId,
+            name,
+            website,
+            sector,
+            description: proposal.description,
+            stage: proposal.stage,
+            status: "ACTIVE",
+            sourcedBy: "Gmail import",
+            notes: proposal.notes ? `Import note: ${proposal.notes}` : null,
+          },
+        });
 
     if (proposal.contactEmail) {
       const existing = await tx.contact.findFirst({

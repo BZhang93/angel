@@ -11,17 +11,26 @@ export function CandidateCard({
   name,
   website,
   sector,
+  mergeHint,
 }: {
   id: string;
   name: string;
   website: string;
   sector: string;
+  /// Set when importing will join an existing company rather than create one.
+  mergeHint: { mergesInto: string; reason: string } | null;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   return (
     <div className="mt-3 border-t border-border pt-3">
+      {mergeHint && (
+        <p className="mb-2 text-xs text-muted">
+          Will be added to the existing <strong>{mergeHint.mergesInto}</strong> ({mergeHint.reason})
+          rather than creating a second entry. Edit the name below to keep them separate.
+        </p>
+      )}
       <form
         className="flex flex-wrap items-end gap-2"
         action={async (form) => {
@@ -61,7 +70,7 @@ export function CandidateCard({
           disabled={pending}
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
         >
-          {pending ? "Importing…" : "Import"}
+          {pending ? "Importing…" : mergeHint ? "Merge In" : "Import"}
         </button>
         <button
           type="submit"

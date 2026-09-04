@@ -147,6 +147,20 @@ enum CandidateState {
   DISMISSED
 }
 
+/// What a long-running job is doing, so the UI can show it live rather than
+/// leaving the user with a spinner.
+enum ScanKind {
+  IMPORT_SCAN
+  SYNC
+  COMPANY_SCAN
+}
+
+enum ScanState {
+  RUNNING
+  DONE
+  FAILED
+}
+
 enum DocumentKind {
   SAFE
   NOTE
@@ -531,4 +545,30 @@ model ImportCandidate {
   /// several underlying companies and each is its own candidate.
   @@unique([userId, sourceDomain, proposedName])
   @@index([userId, state])
+}
+
+/// Progress for one run of a long job. Written as the job goes, read by the
+/// page every couple of seconds, so results appear as they are found instead of
+/// arriving in a single batch at the end.
+model ScanRun {
+  id     String    @id @default(uuid())
+  userId String
+  kind   ScanKind
+  state  ScanState @default(RUNNING)
+
+  /// Units of work, when known up front: senders to read, messages to fetch.
+  totalItems Int @default(0)
+  doneItems  Int @default(0)
+  /// Rows this run has produced so far: proposals, updates, documents.
+  produced   Int @default(0)
+  /// What it is doing right now, in words a person can read.
+  step       String?
+  /// Set when the run ends, successfully or otherwise.
+  message    String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId, kind, startedAt])
 }

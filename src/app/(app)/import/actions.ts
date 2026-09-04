@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/session";
 import { scanForCompanies } from "@/lib/import/scan";
+import { failRun, finishRun, startRun } from "@/lib/progress";
 import { acceptCandidate } from "@/lib/import/accept";
 
 export type ImportResult =
@@ -15,15 +16,21 @@ export async function runScan(form: FormData): Promise<ImportResult> {
   const userId = await requireUserId();
   const query = String(form.get("query") ?? "").trim();
 
+  // The run row is what the page polls: proposals are written as each sender is
+  // reviewed, so they appear while the scan is still going.
+  const run = await startRun(userId, "IMPORT_SCAN", "Starting");
+
   try {
-    const result = await scanForCompanies(userId, { query: query || undefined });
+    const result = await scanForCompanies(userId, { query: query || undefined, runId: run.id });
+    const message = `Read ${result.scanned} emails across ${result.domains} senders. ${result.proposed} proposed, ${result.skipped} not investments.`;
+    await finishRun(run.id, message);
     revalidatePath("/import");
-    return {
-      status: "ok",
-      message: `Read ${result.scanned} emails across ${result.domains} senders. ${result.proposed} proposed, ${result.skipped} not investments.`,
-    };
+    return { status: "ok", message };
   } catch (error) {
-    return { status: "error", message: error instanceof Error ? error.message : "Scan failed." };
+    const message = error instanceof Error ? error.message : "Scan failed.";
+    await failRun(run.id, message);
+    revalidatePath("/import");
+    return { status: "error", message };
   }
 }
 
