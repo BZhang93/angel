@@ -11,6 +11,7 @@ import {
   type Cashflow,
 } from "@/lib/portfolio";
 import { deriveCompanySignals, type DerivedSignal } from "@/lib/signals";
+import { mentionsCompany } from "@/lib/gmail/content-match";
 
 // Read models for the UI. This layer does the Prisma work and hands plain
 // numbers to the pure functions in portfolio.ts / signals.ts, so the maths stays
@@ -65,6 +66,14 @@ export async function getCompanySummaries(
   userId: string,
   asOf: Date = new Date(),
 ): Promise<CompanySummary[]> {
+  // Unfiled mail is read once and matched in memory: 200 rows of subject and a
+  // slice of body is far cheaper than a text query per company, and it is what
+  // keeps the silence rule honest.
+  const unfiled = await prisma.update.findMany({
+    where: { userId, companyId: null },
+    select: { subject: true, rawText: true, receivedAt: true },
+  });
+
   const companies = await prisma.company.findMany({
     where: { userId },
     include: {
@@ -81,6 +90,18 @@ export async function getCompanySummaries(
   });
 
   return companies.map((company) => {
+    const mentions = unfiled.filter(
+      (update) =>
+        mentionsCompany(update.subject ?? "", company.name) ||
+        // Only the opening of the body: a name in a footer is not an update
+        // about that company.
+        mentionsCompany(update.rawText.slice(0, 3000), company.name),
+    );
+    const latestMention = mentions.reduce<Date | null>(
+      (latest, update) => (!latest || update.receivedAt > latest ? update.receivedAt : latest),
+      null,
+    );
+
     const flows: Cashflow[] = company.positions.flatMap((position) =>
       position.transactions.map((transaction) => ({
         kind: transaction.kind as CashKind,
@@ -141,6 +162,7 @@ export async function getCompanySummaries(
       signals: deriveCompanySignals(
         {
           lastUpdateAt: lastUpdate?.receivedAt ?? null,
+          unfiledMentions: { count: mentions.length, latest: latestMention },
           firstInvestmentAt,
           runwayMonths: runwayMetric ? toNumber(runwayMetric.value) : null,
           maturityDates: company.positions

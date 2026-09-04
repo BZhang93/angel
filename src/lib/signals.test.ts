@@ -151,3 +151,31 @@ describe("deriveCompanySignals", () => {
     ).toEqual([]);
   });
 });
+
+describe("silenceSignal with unfiled mail", () => {
+  it("does not claim silence when recent mail mentions the company", () => {
+    // Vessel: nothing filed since Aug 2025, but six emails mention it, the
+    // newest a week old. Calling that 388 days of silence blamed the founder
+    // for a filing failure.
+    const signal = silenceSignal(d("2025-08-11"), NOW, {
+      unfiledMentions: { count: 6, latest: d("2026-08-28") },
+    });
+    expect(signal?.kind).toBe("UNFILED_MAIL");
+    expect(signal?.severity).toBe("LOW");
+    expect(signal?.summary).toContain("review queue");
+  });
+
+  it("still reports silence when the unfiled mail is itself old", () => {
+    const signal = silenceSignal(d("2025-01-01"), NOW, {
+      unfiledMentions: { count: 2, latest: d("2025-06-01") },
+    });
+    expect(signal?.kind).toBe("SILENCE");
+    expect(signal?.severity).toBe("CRITICAL");
+  });
+
+  it("is unaffected when nothing mentions the company", () => {
+    expect(
+      silenceSignal(d("2025-01-01"), NOW, { unfiledMentions: { count: 0, latest: null } })?.kind,
+    ).toBe("SILENCE");
+  });
+});

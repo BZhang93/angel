@@ -46,7 +46,7 @@ describe("matchCompanyByContent", () => {
     expect(match).toMatchObject({ companyId: "pintours", confidence: 0.85 });
   });
 
-  it("refuses to file a note that names several companies", () => {
+  it("refuses to file a note that names several companies nowhere in its subject", () => {
     expect(
       matchCompanyByContent("Updates on Asendia, Pintours and Bravi this quarter.", companies, {
         subject: "Q3 portfolio note",
@@ -54,11 +54,24 @@ describe("matchCompanyByContent", () => {
     ).toBeNull();
   });
 
-  it("uses the subject to break a tie, but not confidently", () => {
-    const match = matchCompanyByContent("Also mentions Pintours and Bravi.", companies, {
-      subject: "Asendia wire confirmation",
-    });
-    expect(match).toMatchObject({ companyId: "asendia", confidence: 0.7 });
+  it("files on a subject naming one company, whatever the body mentions", () => {
+    // The real case: a monthly update whose footer lists the rest of the
+    // portfolio was left unfiled, and the company then looked silent.
+    const match = matchCompanyByContent(
+      "Vessel had a strong month. Elsewhere in the portfolio, Asendia and Pintours also closed.",
+      [...companies, { companyId: "vessel", name: "Vessel" }],
+      { subject: "Viaka x Vessel SPV - August 2026 Update" },
+    );
+    expect(match).toMatchObject({ companyId: "vessel" });
+    expect(match!.confidence).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("refuses a digest naming several companies in its subject", () => {
+    expect(
+      matchCompanyByContent("Everything this month.", companies, {
+        subject: "Asendia, Pintours and Bravi: monthly digest",
+      }),
+    ).toBeNull();
   });
 
   it("returns null when no company is named", () => {

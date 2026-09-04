@@ -88,24 +88,32 @@ export function matchCompanyByContent(
   companies: NamedCompany[],
   opts: { subject?: string | null } = {},
 ): ContentMatch | null {
-  const haystack = `${opts.subject ?? ""}\n${text}`;
-  const hits = companies.filter((company) => mentionsCompany(haystack, company.name));
-  if (hits.length === 0) return null;
+  const subject = opts.subject ?? "";
+  const inSubject = companies.filter((company) => mentionsCompany(subject, company.name));
+  const inBody = companies.filter((company) => mentionsCompany(text, company.name));
 
-  if (hits.length === 1) {
-    const hit = hits[0]!;
-    // A name in the subject line is a stronger claim than one buried in a
-    // paragraph, which might be an aside.
-    const inSubject = opts.subject ? mentionsCompany(opts.subject, hit.name) : false;
-    return { companyId: hit.companyId, confidence: inSubject ? 0.95 : 0.85, matchedName: hit.name };
-  }
-
-  // Several named: only a subject-line mention breaks the tie, and even then
-  // not confidently enough to file without review.
-  const inSubject = hits.filter((hit) => opts.subject && mentionsCompany(opts.subject, hit.name));
+  // A subject naming exactly one company is what the email is about. Bodies
+  // name others in passing: a footer, a digest link, "as we did with X". Judging
+  // on the body alone left "Viaka x Vessel SPV - August 2026 Update" unfiled
+  // because the newsletter footer listed the rest of the portfolio.
   if (inSubject.length === 1) {
     const hit = inSubject[0]!;
-    return { companyId: hit.companyId, confidence: 0.7, matchedName: hit.name };
+    const bodyAgrees = inBody.length === 1 && inBody[0]!.companyId === hit.companyId;
+    return {
+      companyId: hit.companyId,
+      confidence: bodyAgrees ? 0.95 : 0.9,
+      matchedName: hit.name,
+    };
   }
+
+  // Several named in the subject: a digest about the portfolio, not about one
+  // company. Filing it against any of them would be wrong.
+  if (inSubject.length > 1) return null;
+
+  if (inBody.length === 1) {
+    const hit = inBody[0]!;
+    return { companyId: hit.companyId, confidence: 0.85, matchedName: hit.name };
+  }
+
   return null;
 }

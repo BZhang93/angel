@@ -5,6 +5,7 @@
 
 export type DerivedSignalKind =
   | "SILENCE"
+  | "UNFILED_MAIL"
   | "RUNWAY_LOW"
   | "MATURITY_APPROACHING"
   | "QSBS_APPROACHING"
@@ -37,8 +38,28 @@ export function addYears(date: Date, years: number): Date {
 export function silenceSignal(
   lastUpdateAt: Date | null,
   asOf: Date,
-  opts: { firstInvestmentAt?: Date | null } = {},
+  opts: {
+    firstInvestmentAt?: Date | null;
+    /// Emails that mention this company but were never filed against it. Their
+    /// existence disproves silence: the founder wrote, the app failed to file
+    /// it, and blaming the founder for that would be worse than saying nothing.
+    unfiledMentions?: { count: number; latest: Date | null };
+  } = {},
 ): DerivedSignal | null {
+  const unfiled = opts.unfiledMentions;
+  if (unfiled && unfiled.count > 0) {
+    const staleness = unfiled.latest ? daysBetween(unfiled.latest, asOf) : null;
+    // Recent unfiled mail is a filing problem, not a risk. Old unfiled mail is
+    // both, so it keeps a severity that reflects the gap.
+    if (staleness !== null && staleness < 90) {
+      return {
+        kind: "UNFILED_MAIL",
+        severity: "LOW",
+        summary: `${unfiled.count} email${unfiled.count === 1 ? "" : "s"} mention this company but ${unfiled.count === 1 ? "is" : "are"} unfiled, the most recent ${staleness} days ago. Assign ${unfiled.count === 1 ? "it" : "them"} in the review queue.`,
+      };
+    }
+  }
+
   // With no update ever, measure from the investment date instead, so a company
   // that has never written is not silently treated as fine.
   const since = lastUpdateAt ?? opts.firstInvestmentAt ?? null;
@@ -158,6 +179,7 @@ export function downRoundSignal(valuations: ValuationPoint[]): DerivedSignal | n
 
 export interface CompanySignalInputs {
   lastUpdateAt: Date | null;
+  unfiledMentions?: { count: number; latest: Date | null };
   firstInvestmentAt: Date | null;
   runwayMonths: number | null;
   maturityDates: (Date | null)[];
@@ -170,7 +192,10 @@ const SEVERITY_ORDER: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 /// All derived signals for one company, most severe first.
 export function deriveCompanySignals(input: CompanySignalInputs, asOf: Date): DerivedSignal[] {
   const signals: (DerivedSignal | null)[] = [
-    silenceSignal(input.lastUpdateAt, asOf, { firstInvestmentAt: input.firstInvestmentAt }),
+    silenceSignal(input.lastUpdateAt, asOf, {
+      firstInvestmentAt: input.firstInvestmentAt,
+      unfiledMentions: input.unfiledMentions,
+    }),
     runwaySignal(input.runwayMonths),
     ...input.maturityDates.map((date) => maturitySignal(date, asOf)),
     ...input.qsbsPositions.map((p) => qsbsSignal(p.investmentDate, p.qsbsEligible, asOf)),
