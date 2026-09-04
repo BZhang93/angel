@@ -84,8 +84,13 @@ export async function acceptCandidate(
 
   // Collected inside the transaction, written after it: claims are commentary
   // on the portfolio rather than part of it, and must not hold the write open.
-  const claimed: { positionId: string; kind: "INVESTMENT" | "FEE"; amount: number; quote: string }[] =
-    [];
+  const claimed: {
+    positionId: string;
+    kind: "INVESTMENT" | "FEE";
+    amount: number;
+    quote: string;
+    statedBy: string;
+  }[] = [];
 
   const companyId = await prisma.$transaction(async (tx) => {
     const company = match
@@ -157,6 +162,7 @@ export async function acceptCandidate(
           kind: "INVESTMENT" as const,
           amount: proposedPosition.amount,
           quote: proposedPosition.sourceQuote,
+          statedBy: proposedPosition.statedBy,
         });
         await tx.transaction.create({
           data: {
@@ -177,6 +183,7 @@ export async function acceptCandidate(
           kind: "FEE" as const,
           amount: proposedPosition.feesAmount,
           quote: proposedPosition.sourceQuote,
+          statedBy: proposedPosition.statedBy,
         });
         await tx.transaction.create({
           data: {
@@ -220,7 +227,9 @@ export async function acceptCandidate(
       userId,
       companyId,
       positionId: claim.positionId,
-      source: "EMAIL_COMMITMENT",
+      // An amount the investor stated themselves is a commitment; one a
+      // syndicate or bank stated is a confirmation of something else.
+      source: claim.statedBy === "INVESTOR" ? "EMAIL_COMMITMENT" : "EMAIL_CONFIRMATION",
       kind: claim.kind,
       amount: claim.amount,
       sourceQuote: claim.quote,

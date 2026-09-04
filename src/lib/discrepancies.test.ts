@@ -20,7 +20,7 @@ describe("findDiscrepancies", () => {
     ];
     const found = findDiscrepancies(claims);
     expect(found).toHaveLength(1);
-    expect(found[0]!.label).toBe("The commitment email's amount does not match");
+    expect(found[0]!.label).toBe("Your commitment email's amount does not match");
     expect(found[0]!.detail).toContain("$30,500.00");
     expect(found[0]!.detail).toContain("$3,000.00");
   });
@@ -78,6 +78,17 @@ describe("agreedValue", () => {
       "INVESTMENT",
     );
     expect(agreed).toMatchObject({ source: "MANUAL", amount: 3000 });
+  });
+
+  it("prefers what the investor committed over what a syndicate announced", () => {
+    const agreed = agreedValue(
+      [
+        { source: "EMAIL_CONFIRMATION", kind: "INVESTMENT", amount: 30500 },
+        { source: "EMAIL_COMMITMENT", kind: "INVESTMENT", amount: 3000 },
+      ],
+      "INVESTMENT",
+    );
+    expect(agreed).toMatchObject({ source: "EMAIL_COMMITMENT", amount: 3000 });
   });
 
   it("prefers a signed document over an email", () => {

@@ -154,6 +154,7 @@ describe("proposal schema", () => {
           interestRatePct: null,
           maturityDate: null,
           hasProRata: null,
+          statedBy: "INVESTOR" as const,
           sourceQuote: "Your commitment: $3,000 plus $283.50 in legal fees.",
           confidence: 0.95,
         },
@@ -164,5 +165,48 @@ describe("proposal schema", () => {
     expect(CompanyProposalSchema.safeParse({ isInvestment: true, name: "Viaka" }).success).toBe(
       false,
     );
+  });
+});
+
+describe("attachRepliesByThread", () => {
+  it("pulls the investor's own reply into the sender's group", () => {
+    // The reply states the commitment and comes from a consumer address, so it
+    // can never form a group of its own; the thread is how it gets home.
+    const groups = groupBySenderDomain([
+      email({
+        fromAddress: "hani@viaka.net",
+        gmailThreadId: "t1",
+        subject: "Viaka is investing in Marr Labs",
+        receivedAt: new Date("2026-05-20"),
+      }),
+      email({
+        fromAddress: "bzhang93@gmail.com",
+        gmailThreadId: "t1",
+        subject: "Re: Viaka is investing in Marr Labs",
+        text: "I'm in for $3,000.",
+        receivedAt: new Date("2026-05-21"),
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.domain).toBe("viaka.net");
+    expect(groups[0]!.emails).toHaveLength(2);
+    expect(groups[0]!.emails.some((entry) => entry.text.includes("$3,000"))).toBe(true);
+  });
+
+  it("leaves a consumer email on no known thread out", () => {
+    const groups = groupBySenderDomain([
+      email({ fromAddress: "hani@viaka.net", gmailThreadId: "t1" }),
+      email({ fromAddress: "friend@gmail.com", gmailThreadId: "unrelated" }),
+    ]);
+    expect(groups[0]!.emails).toHaveLength(1);
+  });
+
+  it("keeps a group sorted newest first after attaching", () => {
+    const groups = groupBySenderDomain([
+      email({ fromAddress: "a@viaka.net", gmailThreadId: "t1", receivedAt: new Date("2026-01-01") }),
+      email({ fromAddress: "me@gmail.com", gmailThreadId: "t1", receivedAt: new Date("2026-06-01") }),
+    ]);
+    expect(groups[0]!.emails[0]!.receivedAt.toISOString().slice(0, 10)).toBe("2026-06-01");
   });
 });

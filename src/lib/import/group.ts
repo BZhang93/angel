@@ -62,6 +62,36 @@ export function looksLikeCompanyName(name: string | null): boolean {
   return !/^[A-Z][a-z]+ [A-Z][a-z]+$/.test(trimmed);
 }
 
+/// Pulls ungrouped mail into the group it plainly belongs to, by thread.
+///
+/// The investor's own replies are the case that matters: they come from a
+/// consumer address, so they can never form a group, but a reply saying "I'm in
+/// for $3,000" is the clearest statement of a commitment anywhere in the
+/// mailbox. It sits on the syndicate's own thread, which is how it gets home.
+export function attachRepliesByThread(
+  groups: DomainGroup[],
+  ungrouped: ScannedEmail[],
+): DomainGroup[] {
+  if (groups.length === 0 || ungrouped.length === 0) return groups;
+
+  const groupByThread = new Map<string, DomainGroup>();
+  for (const group of groups) {
+    for (const email of group.emails) {
+      if (email.gmailThreadId) groupByThread.set(email.gmailThreadId, group);
+    }
+  }
+
+  for (const email of ungrouped) {
+    const group = email.gmailThreadId ? groupByThread.get(email.gmailThreadId) : undefined;
+    if (group) group.emails.push(email);
+  }
+
+  for (const group of groups) {
+    group.emails.sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime());
+  }
+  return groups;
+}
+
 export function groupBySenderDomain(
   emails: ScannedEmail[],
   opts: { knownDomains?: Set<string>; minEmails?: number } = {},
@@ -69,13 +99,17 @@ export function groupBySenderDomain(
   const known = opts.knownDomains ?? new Set<string>();
   const minEmails = opts.minEmails ?? 1;
   const groups = new Map<string, ScannedEmail[]>();
+  const ungrouped: ScannedEmail[] = [];
 
   for (const email of emails) {
     const domain = domainOfAddress(email.fromAddress);
     if (!domain) continue;
     // A syndicate's or a bank's domain is not a website, but its mail is
     // exactly where the deals and the transfers are, so it is grouped.
-    if (!isGroupableSender(domain)) continue;
+    if (!isGroupableSender(domain)) {
+      ungrouped.push(email);
+      continue;
+    }
     if (known.has(domain)) continue;
 
     const bucket = groups.get(domain) ?? [];
@@ -83,7 +117,7 @@ export function groupBySenderDomain(
     groups.set(domain, bucket);
   }
 
-  return [...groups.entries()]
+  const built = [...groups.entries()]
     .filter(([, bucket]) => bucket.length >= minEmails)
     .map(([domain, bucket]) => {
       const sorted = [...bucket].sort(
@@ -97,6 +131,8 @@ export function groupBySenderDomain(
       };
     })
     .sort((a, b) => b.emails.length - a.emails.length);
+
+  return attachRepliesByThread(built, ungrouped);
 }
 
 /// Splits a sender's mail into batches the model reads in full.

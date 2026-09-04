@@ -44,6 +44,11 @@ export const ProposedPositionSchema = z.object({
   interestRatePct: z.number().nullable(),
   maturityDate: z.string().nullable().describe("ISO date (YYYY-MM-DD)."),
   hasProRata: z.boolean().nullable(),
+  /// Who stated the amount. The investor's own reply is the strongest evidence
+  /// of what they committed; a syndicate's announcement is about the round.
+  statedBy: z
+    .enum(["INVESTOR", "SYNDICATE", "COMPANY", "BANK", "DOCUMENT", "UNKNOWN"])
+    .describe("Who wrote the email the amount came from."),
   sourceQuote: z.string().describe("The sentence evidencing this investment."),
   confidence: z.number().min(0).max(1),
 });

@@ -33,7 +33,7 @@ export interface Discrepancy {
 }
 
 const SOURCE_LABEL: Record<ClaimSource, string> = {
-  EMAIL_COMMITMENT: "The commitment email",
+  EMAIL_COMMITMENT: "Your commitment email",
   EMAIL_CONFIRMATION: "The confirmation email",
   BANK_TRANSFER: "The bank transfer",
   DOCUMENT: "The signed document",
@@ -57,13 +57,18 @@ function money(value: number): string {
 
 /// The value the portfolio treats as true for a kind: whatever the user entered
 /// if they entered one, else the most trustworthy source that stated it.
+/// Most trusted first. The investor's own statements outrank anything a third
+/// party said about the deal: what they typed into the app, then the signed
+/// document, then their own commitment email. A syndicate's confirmation and a
+/// bank's gross figure are evidence, but they describe the round or the wire
+/// rather than what was committed.
 const TRUST_ORDER: ClaimSource[] = [
   "MANUAL",
   "DOCUSIGN",
   "DOCUMENT",
+  "EMAIL_COMMITMENT",
   "BANK_TRANSFER",
   "EMAIL_CONFIRMATION",
-  "EMAIL_COMMITMENT",
 ];
 
 export function agreedValue(claims: Claim[], kind: ClaimKind): Claim | null {

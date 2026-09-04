@@ -21,6 +21,8 @@ Syndicates and SPVs are the case that matters most:
 - For a direct investment from a company's own domain, return that one company with investmentGroup null.
 
 Amounts are where this goes wrong, so be strict:
+- The reader is the investor whose mailbox this is. Their OWN replies are in these batches, quoted as "From: <their address>", and a reply saying how much they are in for is the single best evidence of their commitment. Prefer it over any figure a syndicate or company states, and set statedBy INVESTOR for it.
+- statedBy records who wrote the email an amount came from, so a commitment the reader made is never confused with a round size someone else announced.
 - amount is the READER's own investment. An SPV's total raise, the round size, or another investor's cheque is never the reader's amount. If only a total is stated, set amount null and say so in notes.
 - feesAmount is anything the reader paid on top: legal, admin, setup or carry paid up front.
 - amountConfirmed is true only when the emails show the money actually moved. A commitment with a future wire deadline is false, however firm the language.
@@ -67,6 +69,11 @@ function mergeProposals(existing: Proposal | undefined, incoming: Proposal): Pro
   };
 }
 
+/// The mailbox owner's own address, so their replies can be marked as theirs in
+/// the evidence. Without it the model cannot tell a commitment from an
+/// announcement.
+let mailboxOwner: string | null = null;
+
 function evidenceText(group: DomainGroup, emails: ScannedEmail[]): string {
   return [
     `Sender domain: ${group.domain}`,
@@ -76,7 +83,9 @@ function evidenceText(group: DomainGroup, emails: ScannedEmail[]): string {
       [
         `--- Email ${index + 1} ---`,
         `Date: ${email.receivedAt.toISOString().slice(0, 10)}`,
-        `From: ${email.fromName ? `${email.fromName} ` : ""}<${email.fromAddress}>`,
+        `From: ${email.fromName ? `${email.fromName} ` : ""}<${email.fromAddress}>${
+          mailboxOwner && email.fromAddress.toLowerCase() === mailboxOwner ? " (the reader)" : ""
+        }`,
         `Subject: ${email.subject ?? "(none)"}`,
         email.attachments.length > 0
           ? `Attachments: ${email.attachments.map((a) => a.filename).join(", ")}`
@@ -111,6 +120,7 @@ export async function scanForCompanies(
   const account = await prisma.gmailAccount.findUnique({ where: { userId } });
   if (!account) throw new Error("Connect Gmail first.");
 
+  mailboxOwner = account.emailAddress.toLowerCase();
   const accessToken = await accessTokenFromRefresh(decryptSecret(account.refreshTokenEncrypted));
   const query = opts.query ?? account.syncQuery;
   await updateRun(runId, { step: "Searching your mailbox" });
