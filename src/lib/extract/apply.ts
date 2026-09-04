@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { linkedTextForUpdate } from "@/lib/enrich/links";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { recordPayment } from "./payments";
 import type { Extraction } from "./schema";
 
@@ -128,29 +129,27 @@ export async function extractPendingUpdates(
     take: opts.limit ?? 25,
   });
 
-  let extracted = 0;
-  let failed = 0;
+  // Each update is an independent model call of several seconds, so they run in
+  // parallel under a ceiling. Sequentially, sixty emails is ten minutes of
+  // waiting; this is the difference between a button that works and one that
+  // looks broken.
+  const results = await mapWithConcurrency(updates, async (update) => {
+    const result = await runner({
+      companyName: update.company?.name,
+      subject: update.subject,
+      receivedAt: update.receivedAt,
+      text: update.rawText,
+      linkedText: await linkedTextForUpdate(update.id),
+    });
+    await applyExtraction(userId, update.id, update.companyId!, result, {
+      subject: update.subject,
+      rawText: update.rawText,
+    });
+  });
 
-  for (const update of updates) {
-    try {
-      const result = await runner({
-        companyName: update.company?.name,
-        subject: update.subject,
-        receivedAt: update.receivedAt,
-        text: update.rawText,
-        linkedText: await linkedTextForUpdate(update.id),
-      });
-      await applyExtraction(userId, update.id, update.companyId!, result, {
-        subject: update.subject,
-        rawText: update.rawText,
-      });
-      extracted += 1;
-    } catch {
-      // One unreadable email must not stop the batch; it stays unextracted and
-      // will be retried on the next run.
-      failed += 1;
-    }
-  }
+  // One unreadable email stays unextracted and is retried on the next run.
+  const extracted = results.filter((entry) => entry.status === "fulfilled").length;
+  const failed = results.length - extracted;
 
   return { extracted, failed };
 }

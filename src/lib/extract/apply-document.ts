@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { downloadAttachment } from "@/lib/storage";
 import { extractDocumentTerms, type DocumentTerms } from "./document";
 import { attachOrphanClaims, recordClaim } from "@/lib/claims";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { chooseTargetPosition, gapsOnly, parseIsoDate } from "./fill";
 
 // Folding a document's terms into the portfolio.
@@ -192,25 +193,18 @@ export async function extractPendingDocuments(
     take: opts.limit ?? 20,
   });
 
-  let extracted = 0;
   let filled = 0;
-  let failed = 0;
 
-  for (const document of documents) {
-    let terms: DocumentTerms;
-    try {
-      const bytes = await downloadAttachment(document.storagePath!);
-      terms = await extractDocumentTerms(bytes, {
-        filename: document.title,
-        companyName: document.company?.name,
-        formFields: Array.isArray(document.formFields)
-          ? (document.formFields as { name: string; value: string }[])
-          : undefined,
-      });
-    } catch {
-      failed += 1;
-      continue;
-    }
+  // Reading a PDF is another wait on the model; several run at once.
+  const results = await mapWithConcurrency(documents, async (document) => {
+    const bytes = await downloadAttachment(document.storagePath!);
+    const terms: DocumentTerms = await extractDocumentTerms(bytes, {
+      filename: document.title,
+      companyName: document.company?.name,
+      formFields: Array.isArray(document.formFields)
+        ? (document.formFields as { name: string; value: string }[])
+        : undefined,
+    });
 
     await prisma.document.update({
       where: { id: document.id },
@@ -220,15 +214,17 @@ export async function extractPendingDocuments(
         extractedAt: new Date(),
       },
     });
-    extracted += 1;
 
-    if (!document.companyId) continue;
+    if (!document.companyId) return;
 
     const applied = await applyTermsToPortfolio(userId, document.companyId, document.id, terms, {
       docusignEnvelopeId: document.docusignEnvelopeId,
     });
     if (applied.filled || applied.recordedAmount) filled += 1;
-  }
+  });
+
+  const extracted = results.filter((entry) => entry.status === "fulfilled").length;
+  const failed = results.length - extracted;
 
   return { extracted, filled, failed };
 }

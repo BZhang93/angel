@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/session";
 import { scanForCompanies } from "@/lib/import/scan";
-import { failRun, finishRun, startRun } from "@/lib/progress";
+import { failRun, finishRun, startRun, updateRun } from "@/lib/progress";
 import { acceptCandidate } from "@/lib/import/accept";
 import { rematchPendingUpdates } from "@/lib/gmail/rematch";
 import { extractPendingUpdates } from "@/lib/extract/apply";
@@ -44,8 +44,17 @@ async function fileMailFor(userId: string): Promise<{ filed: number; extracted: 
   const rematch = await rematchPendingUpdates(userId);
   if (rematch.matched === 0) return { filed: 0, extracted: 0 };
 
-  const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 60 });
-  return { filed: rematch.matched, extracted: extraction.extracted };
+  // Tracked as a run so the page can show what it is doing: extraction is model
+  // calls, and a button that sits silent for minutes looks broken.
+  const run = await startRun(userId, "SYNC", `Reading ${rematch.matched} newly filed emails`);
+  try {
+    const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 60 });
+    await finishRun(run.id, `Read ${extraction.extracted} emails.`);
+    return { filed: rematch.matched, extracted: extraction.extracted };
+  } catch (error) {
+    await failRun(run.id, error instanceof Error ? error.message : "Extraction failed.");
+    return { filed: rematch.matched, extracted: 0 };
+  }
 }
 
 export async function importCandidate(form: FormData): Promise<ImportResult> {
@@ -82,15 +91,25 @@ export async function importAll(): Promise<ImportResult> {
     select: { id: true },
   });
 
+  const run = await startRun(userId, "IMPORT_SCAN", `Importing ${candidates.length} companies`);
   let imported = 0;
   let failed = 0;
-  for (const candidate of candidates) {
+
+  for (const [index, candidate] of candidates.entries()) {
     const result = await acceptCandidate(userId, candidate.id);
     if ("error" in result) failed += 1;
     else imported += 1;
+    await updateRun(run.id, {
+      step: `Imported ${imported} of ${candidates.length}`,
+      totalItems: candidates.length,
+      doneItems: index + 1,
+    });
   }
 
+  await updateRun(run.id, { step: "Filing the emails behind them" });
+
   const filed = await fileMailFor(userId);
+  await finishRun(run.id, `Imported ${imported} companies.`);
   revalidatePath("/", "layout");
 
   return {
