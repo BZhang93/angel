@@ -5,7 +5,6 @@ import { currentUser } from "@/lib/session";
 const NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/companies", label: "Companies" },
-  { href: "/vehicles", label: "Vehicles" },
   { href: "/import", label: "Import" },
   { href: "/updates", label: "Updates" },
   { href: "/calendar", label: "Calendar" },

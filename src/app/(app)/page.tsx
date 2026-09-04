@@ -6,6 +6,7 @@ import {
   rollUp,
 } from "@/lib/data/portfolio";
 import { getKeyDates } from "@/lib/data/calendar";
+import { getVehicles } from "@/lib/data/vehicles";
 import { money, multiple, percent, relativeDays, shortDate } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -19,6 +20,7 @@ export default async function DashboardPage() {
   // surfacing: they are silently missing from every total.
   const unrecorded = summaries.filter((company) => company.positionCount === 0).length;
   const keyDates = (await getKeyDates(userId, { asOf, horizonDays: 180 })).slice(0, 6);
+  const vehicles = await getVehicles(userId);
   const unreconciled = await prisma.payment.findMany({
     where: { userId, state: { in: ["DISCREPANCY", "UNMATCHED"] } },
     include: { company: { select: { id: true, name: true } } },
@@ -163,6 +165,28 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
+      {vehicles.length > 0 && (
+        <Card title="Vehicles">
+          <ul className="divide-y divide-border">
+            {vehicles.map((vehicle) => (
+              <li key={vehicle.name} className="flex flex-wrap items-baseline justify-between gap-3 py-2">
+                <Link href="/vehicles" className="text-sm font-medium hover:underline">
+                  {vehicle.name}
+                </Link>
+                <div className="tabular flex flex-wrap items-baseline gap-4 text-sm text-muted">
+                  <span>{vehicle.holdings.length} investments</span>
+                  <span>{money(vehicle.deployed)} routed</span>
+                  <span>
+                    {money(vehicle.fees)} fees
+                    {vehicle.feeRate != null ? ` · ${percent(vehicle.feeRate)}` : ""}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <Card title="Concentration by Sector">
         <ul className="space-y-2">
           {bySector.map((bucket) => (

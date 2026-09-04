@@ -40,6 +40,7 @@ export default async function CompaniesPage() {
             <tr>
               <th className="px-4 py-2 font-medium">Company</th>
               <th className="px-4 py-2 font-medium">Instruments</th>
+              <th className="px-4 py-2 font-medium">Vehicle</th>
               <th
                 className="cursor-help px-4 py-2 text-right font-medium"
                 title="Total cash out, fees included. A fee bought no ownership, so hiding it would flatter the return."
@@ -69,10 +70,25 @@ export default async function CompaniesPage() {
                     {company.instruments.map((instrument) => (
                       <Pill key={instrument}>{titleCase(instrument)}</Pill>
                     ))}
-                    {company.investmentGroups.map((group) => (
-                      <Pill key={group}>via {group}</Pill>
-                    ))}
                   </div>
+                </td>
+                <td className="px-4 py-2">
+                  {company.investmentGroups.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {company.investmentGroups.map((group) => (
+                        <Link
+                          key={group}
+                          href="/vehicles"
+                          className="text-sm hover:underline"
+                          title="Held through this vehicle. See what it costs on the Vehicles page."
+                        >
+                          {group}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted">Direct</span>
+                  )}
                 </td>
                 {company.positionCount === 0 ? (
                   <td colSpan={4} className="px-4 py-2 text-right text-sm text-muted">
