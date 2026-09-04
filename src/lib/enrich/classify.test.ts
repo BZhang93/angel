@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyLink, isTooThin, isWorthFetching } from "./classify";
+import { classifyLink, fetchableUrl, isTooThin, isWorthFetching } from "./classify";
 
 describe("classifyLink", () => {
   it("recognises recording share links", () => {
@@ -37,5 +37,29 @@ describe("isTooThin", () => {
 
   it("accepts a page with real content", () => {
     expect(isTooThin(Array.from({ length: 200 }, () => "word").join(" "))).toBe(false);
+  });
+});
+
+describe("fetchableUrl", () => {
+  it("rewrites a Google Doc to its text export, which is what a logged-out fetch can read", () => {
+    expect(
+      fetchableUrl("https://docs.google.com/document/d/1651Hy59uyV1rx/edit?usp=drive_link"),
+    ).toBe("https://docs.google.com/document/d/1651Hy59uyV1rx/export?format=txt");
+  });
+
+  it("leaves a sheet alone, whose CSV export is thinner than its rendered view", () => {
+    const sheet = "https://docs.google.com/spreadsheets/d/1hAK/edit#gid=0";
+    expect(fetchableUrl(sheet)).toBe(sheet);
+  });
+
+  it("leaves everything else exactly as it was", () => {
+    for (const url of [
+      "https://www.bravi.app/",
+      "https://app.spiky.ai/meetings/public/2b4af228",
+      "https://docs.google.com/forms/d/1abc/viewform",
+      "not a url",
+    ]) {
+      expect(fetchableUrl(url)).toBe(url);
+    }
   });
 });

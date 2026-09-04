@@ -86,9 +86,10 @@ Break these and the app quietly lies about money.
    syndicate's or bank's domain is read for deals and transfers and is never an identity.
 8. **Provenance on everything extracted.** Every metric, signal, action item and term carries the
    verbatim sentence it came from. If it cannot be quoted, it is not recorded.
-9. **Only exactly one named company files an email.** A digest naming several files against none.
+9. **Take the best match, never the first.** Sender and content are two readings of one email and the sender rule is weak at its lower end on purpose, so `sender ?? content` let a 0.6 guess suppress a 0.95 match and the email then failed the threshold and filed nowhere. Use `bestMatch`.
+10. **Only exactly one named company files an email.** A digest naming several files against none.
    A subject naming one is what the email is about and files at 0.9; a body-only mention is 0.85.
-10. **Never claim silence for a filing failure.** If unfiled mail mentions a company, say so and
+11. **Never claim silence for a filing failure.** If unfiled mail mentions a company, say so and
    point at the review queue instead of reporting the founder as quiet.
 
 ## External services and their traps
@@ -123,7 +124,10 @@ same extractor. Leave the integration in place behind its config.
 
 Seven companies, all held through Viaka, each with one position and amounts traced to a quote from
 the investor's own commitment email. All seven now carry a fee: five from the wire instructions that
-stated it, four confirmed by the transfer that settled it. Roughly 196 stored emails. Documents were cleared during a reset; `scripts/reset-derived.mts` does that again if
+stated it, four confirmed by the transfer that settled it. Roughly 196 stored emails, 161 of them
+filed against a company. Five of seven companies have a sector and description, filled from fetched
+memos. The two that do not are explainable rather than broken: Marr Labs keeps its memos on Drive,
+which is gated on purpose, and Asendia's filed mail carries no memo link at all. Documents were cleared during a reset; `scripts/reset-derived.mts` does that again if
 needed (dry run by default, `--confirm` to apply).
 
 Bravi is the one position flagged for review, correctly: its wire instructions billed $425 including

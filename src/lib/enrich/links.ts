@@ -1,7 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { domainOfWebsite } from "@/lib/import/identity";
-import { classifyLink, isTooThin, isWorthFetching, type FetchableKind } from "./classify";
+import {
+  classifyLink,
+  fetchableUrl,
+  isTooThin,
+  isWorthFetching,
+  type FetchableKind,
+} from "./classify";
 import { fetchPage } from "./fetch";
 
 // Fetching the links worth reading out of stored updates.
@@ -76,7 +82,9 @@ export async function fetchPendingLinks(
       }
 
       try {
-        const page = await fetchPage(url);
+        // Fetched at whatever URL actually serves the text; stored against the
+        // link the email contained.
+        const page = await fetchPage(fetchableUrl(url));
         if (isTooThin(page.text)) {
           skipped += 1;
           continue;

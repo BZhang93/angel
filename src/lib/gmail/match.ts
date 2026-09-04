@@ -10,6 +10,12 @@ export interface MatchCandidate {
   contactEmails: string[];
 }
 
+/// What every matcher agrees on: which company, and how sure.
+export interface CompanyMatch {
+  companyId: string;
+  confidence: number;
+}
+
 export interface MatchResult {
   companyId: string;
   confidence: number;
@@ -66,4 +72,31 @@ export function matchCompany(
   }
 
   return null;
+}
+
+/// The strongest of several readings of the same email, or null if none
+/// matched.
+///
+/// Sender and content answer different questions, and the sender rule is
+/// deliberately weak at its lower end: a company name in the subject scores
+/// 0.6, under the threshold, so it surfaces as a suggestion in the review queue
+/// rather than filing itself. Resolving the two with `sender ?? content` let
+/// that 0.6 suppress a 0.95 content match, and the email was then dropped for
+/// sitting under the threshold. It filed nothing and reported nothing: 135 of
+/// 169 unfiled emails were stuck behind exactly that, including every Viaka
+/// deal thread, whose subjects name the company and therefore always hit the
+/// weak rule first.
+///
+/// Deliberately not generic over the two match types: a caller only ever needs
+/// which company and how sure, and widening to that lets a sender match and a
+/// content match be compared directly.
+export function bestMatch(
+  ...matches: Array<CompanyMatch | null | undefined>
+): CompanyMatch | null {
+  let best: CompanyMatch | null = null;
+  for (const match of matches) {
+    if (!match) continue;
+    if (!best || match.confidence > best.confidence) best = match;
+  }
+  return best;
 }

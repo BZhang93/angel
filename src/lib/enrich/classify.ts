@@ -11,6 +11,9 @@ export type LinkKind = "MEMO" | "RECORDING" | "WEBSITE" | "GATED" | "OTHER";
 
 /// Share links whose pages carry a transcript or recording summary.
 const RECORDING_HOSTS = [
+  // Viaka runs every deal Q&A through Spiky, so this one host covers the call
+  // recording for essentially the whole portfolio.
+  "spiky.ai",
   "fathom.video",
   "grain.com",
   "grain.co",
@@ -102,4 +105,33 @@ export function isTooThin(text: string): boolean {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   if (words < 120) return true;
   return /sign in to continue|please log in|enable javascript to/i.test(text.slice(0, 600));
+}
+
+/// The URL to actually fetch for a link, which is not always the link itself.
+///
+/// Google serves a logged-out fetch of a /document/d/ link an empty app shell,
+/// so a memo shared with the whole syndicate reads as about 26 words of chrome
+/// and is discarded as too thin. The export endpoint returns the text itself
+/// for anything shared "anyone with the link", which is how these are shared.
+/// Across this mailbox that is the difference between 26 words and 3,000, on
+/// five of the seven companies.
+///
+/// Documents only, deliberately. A sheet's CSV export is thinner than its HTML
+/// view rather than richer, and no deck has ever been linked, so neither earns
+/// a code path.
+///
+/// A rewritten URL is used only for fetching: the original is what gets stored,
+/// so provenance still points at the link the email actually contained.
+export function fetchableUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+
+  if (parsed.hostname.replace(/^www\./i, "").toLowerCase() !== "docs.google.com") return url;
+
+  const match = /^\/document\/d\/([^/]+)/.exec(parsed.pathname);
+  return match ? `https://docs.google.com/document/d/${match[1]}/export?format=txt` : url;
 }

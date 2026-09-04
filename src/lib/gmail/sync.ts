@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
 import { accessTokenFromRefresh, getMessage, listMessageIds } from "./client";
 import { ingestAttachments } from "./attachments";
-import { AUTO_MATCH_THRESHOLD, matchCompany, type MatchCandidate } from "./match";
+import { AUTO_MATCH_THRESHOLD, bestMatch, matchCompany, type MatchCandidate } from "./match";
 import { matchCompanyByContent } from "./content-match";
 
 export interface SyncResult {
@@ -59,16 +59,17 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
     }
     if (!email.text.trim()) continue;
 
-    // Sender first. Failing that, what the email says: DocuSign and banks send
-    // from their own domain about one of your companies.
-    const senderMatch = matchCompany(email, candidates);
-    const match =
-      senderMatch ??
+    // Both readings, then the stronger one. The content rule is what catches a
+    // third-party sender: a bank confirming a wire to "Viaka Pintours 2026,
+    // LLC", or a DocuSign envelope named after the company.
+    const match = bestMatch(
+      matchCompany(email, candidates),
       matchCompanyByContent(
         email.text,
         candidates.map((candidate) => ({ companyId: candidate.companyId, name: candidate.name })),
         { subject: email.subject },
-      );
+      ),
+    );
     const confident = match != null && match.confidence >= AUTO_MATCH_THRESHOLD;
 
     const created_ = await prisma.update.create({

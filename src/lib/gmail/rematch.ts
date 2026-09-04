@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { AUTO_MATCH_THRESHOLD, matchCompany, type MatchCandidate } from "./match";
+import { AUTO_MATCH_THRESHOLD, bestMatch, matchCompany, type MatchCandidate } from "./match";
 import { matchCompanyByContent } from "./content-match";
 
 // Re-matching updates that are stuck in the review queue.
@@ -45,15 +45,13 @@ export async function rematchPendingUpdates(userId: string): Promise<RematchResu
   let matched = 0;
 
   for (const update of pending) {
-    // Sender first, then what the email says. The second is what catches the
-    // third-party senders: a bank confirming a wire to "Viaka Pintours 2026,
-    // LLC", or a DocuSign envelope named after the company.
-    const bySender = matchCompany(
-      { fromAddress: update.fromAddress, subject: update.subject },
-      candidates,
+    // Both readings, then the stronger one. Not the first that answers: the
+    // sender rule returns a weak 0.6 for a company name in the subject, which
+    // used to suppress the content match outright.
+    const match = bestMatch(
+      matchCompany({ fromAddress: update.fromAddress, subject: update.subject }, candidates),
+      matchCompanyByContent(update.rawText, named, { subject: update.subject }),
     );
-    const match =
-      bySender ?? matchCompanyByContent(update.rawText, named, { subject: update.subject });
 
     if (!match || match.confidence < AUTO_MATCH_THRESHOLD) continue;
 
