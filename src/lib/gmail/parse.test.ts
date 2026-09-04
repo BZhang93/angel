@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractBody,
+  extractLinks,
   guessDocumentKind,
   isWorthReading,
   listAttachments,
@@ -200,5 +201,48 @@ describe("guessDocumentKind", () => {
     expect(guessDocumentKind("cap_table_post_seed.pdf")).toBe("CAP_TABLE");
     expect(guessDocumentKind("2025 K-1 Acme LLC.pdf")).toBe("K1");
     expect(guessDocumentKind("wire receipt.pdf")).toBe("OTHER");
+  });
+});
+
+describe("extractLinks", () => {
+  it("pulls hrefs out of HTML before the markup is stripped", () => {
+    const links = extractLinks(
+      '<p>See our <a href="https://acme.com/investors">investor page</a> and the <a href="https://docsend.com/view/abc123">data room</a>.</p>',
+    );
+    expect(links).toEqual(["https://acme.com/investors", "https://docsend.com/view/abc123"]);
+  });
+
+  it("finds bare URLs in a plain-text email", () => {
+    expect(extractLinks("Deck is at https://acme.com/deck.pdf, take a look.")).toEqual([
+      "https://acme.com/deck.pdf",
+    ]);
+  });
+
+  it("drops trackers, unsubscribe links and social buttons", () => {
+    const links = extractLinks(
+      [
+        '<a href="https://acme.com">site</a>',
+        '<a href="https://click.mailchimp.com/x">open</a>',
+        '<a href="https://acme.com/unsubscribe?id=9">unsubscribe</a>',
+        '<a href="https://twitter.com/acme">follow</a>',
+      ].join(""),
+    );
+    // The URL constructor normalises a bare host to a trailing slash.
+    expect(links).toEqual(["https://acme.com/"]);
+  });
+
+  it("ignores anything that is not an http link", () => {
+    expect(extractLinks('<a href="mailto:jane@acme.com">email</a><a href="tel:+1555">call</a>')).toEqual(
+      [],
+    );
+  });
+
+  it("strips tracking parameters and dedupes what is left", () => {
+    const links = extractLinks(
+      '<a href="https://acme.com/news?utm_source=email&id=7">a</a><a href="https://acme.com/news?utm_campaign=x&id=7">b</a>',
+    );
+    expect(links).toHaveLength(1);
+    expect(links[0]).toContain("id=7");
+    expect(links[0]).not.toContain("utm_");
   });
 });

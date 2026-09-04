@@ -97,6 +97,7 @@ export async function scanCompanyUpdates(
           fromName: email.fromName,
           subject: email.subject,
           rawText: email.text,
+          links: email.links,
           matchConfidence: 1,
           reviewState: "CONFIRMED",
         },

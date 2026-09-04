@@ -108,6 +108,78 @@ export function stripQuotedReplies(text: string): string {
   return (signature >= 0 ? trimmed.slice(0, signature) : trimmed).trim();
 }
 
+// Hosts whose links carry no information about an investment: click trackers,
+// unsubscribe endpoints, social buttons and image CDNs. Kept out so the useful
+// links (the company's site, a data room, a cap table) are not buried.
+const NOISE_LINK_HOSTS = [
+  "unsubscribe",
+  "list-manage.com",
+  "mailchimp.com",
+  "sendgrid.net",
+  "sendgrid.com",
+  "mailgun.org",
+  "hubspotlinks.com",
+  "click.",
+  "track.",
+  "email.",
+  "beacon",
+  "doubleclick.net",
+  "google-analytics.com",
+  "googletagmanager.com",
+  "facebook.com",
+  "twitter.com",
+  "x.com",
+  "instagram.com",
+  "youtube.com",
+  "calendly.com",
+  "zoom.us",
+  "meet.google.com",
+];
+
+function isNoiseLink(url: string): boolean {
+  const lower = url.toLowerCase();
+  if (/\/unsubscribe|\?unsubscribe|opt[-_]?out/.test(lower)) return true;
+  return NOISE_LINK_HOSTS.some((host) => lower.includes(host));
+}
+
+/// Links found in an email, deduplicated and stripped of tracking parameters.
+///
+/// Worth keeping because the useful ones point at things the email only alludes
+/// to: the company's own site, a data room, a cap table, a deal page. The HTML
+/// body is where they live; stripHtml discards hrefs by design, so they are
+/// pulled out before it runs.
+export function extractLinks(html: string, opts: { max?: number } = {}): string[] {
+  const max = opts.max ?? 25;
+  const found = new Map<string, string>();
+
+  const push = (raw: string) => {
+    let url: URL;
+    try {
+      url = new URL(raw.trim().replace(/[),.;'"]+$/, ""));
+    } catch {
+      return;
+    }
+    // http(s) only: mailto:, tel: and data: are not pages, and refusing them
+    // keeps anything that later fetches a link on safe ground.
+    if (url.protocol !== "http:" && url.protocol !== "https:") return;
+    if (isNoiseLink(url.href)) return;
+
+    for (const param of [...url.searchParams.keys()]) {
+      if (/^(utm_|mc_|ref|source|trk|gclid|fbclid|_hs)/i.test(param)) url.searchParams.delete(param);
+    }
+    // Key on the normalised form so the same link with different tracking
+    // parameters is stored once.
+    const key = `${url.host}${url.pathname}`.replace(/\/$/, "").toLowerCase();
+    if (!found.has(key)) found.set(key, url.href);
+  };
+
+  for (const match of html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) push(match[1]!);
+  // Bare URLs, for plain-text emails that have no markup at all.
+  for (const match of html.matchAll(/https?:\/\/[^\s<>"')]+/gi)) push(match[0]);
+
+  return [...found.values()].slice(0, max);
+}
+
 export interface EmailAttachment {
   /// Gmail's handle for fetching the bytes, valid for this message only.
   attachmentId: string;
@@ -186,6 +258,17 @@ export interface ParsedEmail {
   subject: string | null;
   text: string;
   attachments: EmailAttachment[];
+  links: string[];
+}
+
+/// The richest body available for link extraction: HTML if there is any, since
+/// that is where hrefs live, otherwise the plain text and its bare URLs.
+function rawBodyFor(part: GmailPart | undefined): string {
+  if (!part) return "";
+  const html = findPart(part, "text/html");
+  if (html?.body?.data) return decodeBase64Url(html.body.data);
+  const plain = findPart(part, "text/plain");
+  return plain?.body?.data ? decodeBase64Url(plain.body.data) : "";
 }
 
 export function parseMessage(message: GmailMessage): ParsedEmail {
@@ -206,5 +289,6 @@ export function parseMessage(message: GmailMessage): ParsedEmail {
     subject: header(message, "Subject"),
     text: stripQuotedReplies(extractBody(message.payload)),
     attachments: listAttachments(message.payload),
+    links: extractLinks(rawBodyFor(message.payload)),
   };
 }

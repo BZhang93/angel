@@ -15,6 +15,7 @@ const email = (over: Partial<ScannedEmail> & { fromAddress: string }): ScannedEm
   receivedAt: new Date("2026-01-01T00:00:00.000Z"),
   text: "",
   attachments: [],
+  links: [],
   ...over,
 });
 

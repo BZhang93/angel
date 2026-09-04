@@ -12,6 +12,9 @@ export interface ScannedEmail {
   /// Filenames only. A countersigned SAFE in the attachment list is evidence of
   /// an investment even when the covering email says nothing.
   attachments: { filename: string }[];
+  /// Links found in the body. Often the only place the operating company's own
+  /// site appears, which is what deduplication keys off.
+  links: string[];
 }
 
 export interface DomainGroup {

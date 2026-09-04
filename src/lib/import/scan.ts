@@ -29,6 +29,7 @@ General rules:
 - A cold pitch, a fundraising deck, a newsletter or a rejected deal is not an investment. Return an empty companies array with a one-line skippedReason.
 - Investor updates addressed to existing investors are strong evidence, even when they never restate the amount. Include the company with an empty positions array and say so in notes.
 - A countersigned document listed under Attachments (a SAFE, note or subscription agreement) is strong evidence of an investment even when the covering email is one line. The document's contents are read separately, so do not invent terms from its filename.
+- Use the Links list to identify each company's own website, which is the single most useful field for keeping one company from being entered twice. Prefer a company's own domain over a syndicate's portal link, and never use a document host or a deal-room link as a website.
 - Report dates in ISO YYYY-MM-DD form.`;
 
 function evidenceText(group: DomainGroup, emails: ScannedEmail[]): string {
@@ -45,6 +46,7 @@ function evidenceText(group: DomainGroup, emails: ScannedEmail[]): string {
         email.attachments.length > 0
           ? `Attachments: ${email.attachments.map((a) => a.filename).join(", ")}`
           : "Attachments: none",
+        email.links.length > 0 ? `Links: ${email.links.slice(0, 10).join(", ")}` : "Links: none",
         "",
         // Bounded per email so one enormous forward cannot crowd out the rest.
         email.text.slice(0, 6000),

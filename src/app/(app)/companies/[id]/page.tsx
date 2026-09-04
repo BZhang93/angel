@@ -397,6 +397,21 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                   <span className="text-xs text-muted">{shortDate(update.receivedAt)}</span>
                 </div>
                 {update.summary && <p className="mt-1 text-sm text-muted">{update.summary}</p>}
+                {update.links.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {update.links.slice(0, 6).map((link) => (
+                      <a
+                        key={link}
+                        href={link}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="max-w-full truncate text-xs text-muted underline hover:text-foreground"
+                      >
+                        {link.replace(/^https?:\/\/(www\.)?/, "")}
+                      </a>
+                    ))}
+                  </div>
+                )}
                 {update.metrics.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {update.metrics.map((metric) => (

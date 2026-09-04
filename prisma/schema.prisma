@@ -374,6 +374,10 @@ model Update {
   fromName        String?
   subject         String?
   rawText         String
+  /// Links found in the body, tracking and unsubscribe noise removed. These
+  /// point at what the email only alludes to: the company's own site, a data
+  /// room, a cap table, a deal page.
+  links           String[]
   summary         String?
   matchConfidence Decimal?    @db.Decimal(4, 3)
   reviewState     ReviewState @default(PENDING)
