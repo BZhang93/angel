@@ -83,6 +83,12 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               Reads your completed envelopes, so the signed SAFE or note is the source of the cap,
               discount and share terms rather than the covering email.
             </p>
+            <p className="text-xs text-muted">
+              Requires a DocuSign plan that includes API access. Personal and Standard plans do
+              not, and report that the account does not support API integrations during Go-Live.
+              Without it, upload signed PDFs on a company page instead: they go through the same
+              reader.
+            </p>
             <a
               href="/api/docusign/connect"
               className="inline-block rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"

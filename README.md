@@ -83,6 +83,19 @@ pnpm db:deploy    # apply pending migrations to a shared/prod database
 pnpm db:studio    # browse the data
 ```
 
+## Documents
+
+Signed instruments reach the app three ways, all of which end in the same reader:
+
+1. **Email attachments**, ingested automatically during a sync.
+2. **DocuSign**, pulled over the eSignature API. This needs a DocuSign plan that includes API
+   access; Personal and Standard do not, and Go-Live reports that the account does not support
+   API integrations.
+3. **Manual upload** on a company page, which is the answer when neither of the above applies.
+
+Whatever the source, extracted terms may fill a gap on a position and never overwrite a value
+already recorded, and an unsigned draft never touches a position at all.
+
 ## Not built yet
 
 Document upload to Supabase Storage, CSV export for the accountant, and multi-currency. The schema

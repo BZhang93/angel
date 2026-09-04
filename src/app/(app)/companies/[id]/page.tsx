@@ -15,6 +15,7 @@ import { money, multiple, percent, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
 import { signedUrl } from "@/lib/storage";
 import { ScanUpdatesButton } from "../../updates/scan-updates-button";
+import { UploadDocument } from "./upload-document";
 import { addYears } from "@/lib/signals";
 import {
   addActionItem,
@@ -380,7 +381,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
           <p className="py-2 text-sm text-muted">
             No documents yet. Signed SAFEs, side letters and tax forms arrive as email
             attachments; investment memos and call recordings are fetched from links in those
-            emails.
+            emails. You can also upload one below.
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -424,6 +425,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
             ))}
           </ul>
         )}
+        <UploadDocument companyId={company.id} />
       </Card>
 
       <Card title="Updates">

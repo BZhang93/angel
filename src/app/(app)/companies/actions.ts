@@ -4,6 +4,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/session";
+import { attachmentPath, uploadAttachment } from "@/lib/storage";
+import { guessDocumentKind } from "@/lib/gmail/parse";
+import { extractDocumentTerms } from "@/lib/extract/document";
+import { chooseTargetPosition, gapsOnly, parseIsoDate } from "@/lib/extract/fill";
+import { randomUUID } from "node:crypto";
+import type { DocumentKind } from "@/generated/prisma/enums";
 import type {
   ActionKind,
   CompanyStatus,
@@ -246,4 +252,119 @@ export async function updateCompanyStatus(form: FormData): Promise<void> {
   if (updated.count === 0) throw new Error("Company not found.");
 
   revalidatePath("/", "layout");
+}
+
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+/// Upload a signed document by hand.
+///
+/// The path that matters when an API is not available: DocuSign's own plan may
+/// exclude API access, and plenty of instruments are signed somewhere else
+/// entirely. Once the file is here it goes through exactly the same reader as
+/// an email attachment, with the same rule that a document may complete a
+/// position but never overwrite it.
+export async function uploadDocument(form: FormData): Promise<ActionResult> {
+  const userId = await requireUserId();
+  const companyId = str(form, "companyId");
+  const file = form.get("file");
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { status: "error", message: "Choose a PDF to upload." };
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { status: "error", message: "That file is larger than 20MB." };
+  }
+  if (file.type && file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+    return { status: "error", message: "Only PDFs can be read for terms." };
+  }
+
+  const company = await prisma.company.findFirst({ where: { id: companyId, userId } });
+  if (!company) return { status: "error", message: "Company not found." };
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const uploadId = randomUUID();
+  const path = attachmentPath(userId, `upload-${uploadId}`, uploadId, file.name);
+
+  try {
+    await uploadAttachment(path, bytes, "application/pdf");
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Could not store the file.",
+    };
+  }
+
+  const document = await prisma.document.create({
+    data: {
+      userId,
+      companyId,
+      kind: guessDocumentKind(file.name) as DocumentKind,
+      title: file.name,
+      mimeType: "application/pdf",
+      sizeBytes: bytes.byteLength,
+      storagePath: path,
+    },
+  });
+
+  // Read it now rather than on the next sync: the user is standing right here,
+  // and a document that silently does nothing looks broken.
+  try {
+    const terms = await extractDocumentTerms(bytes, {
+      filename: file.name,
+      companyName: company.name,
+    });
+
+    await prisma.document.update({
+      where: { id: document.id },
+      data: { kind: terms.documentKind, summary: terms.summary, extractedAt: new Date() },
+    });
+
+    if (terms.isExecuted) {
+      const positions = await prisma.position.findMany({
+        where: { companyId, userId },
+        select: {
+          id: true,
+          investmentDate: true,
+          valuationCap: true,
+          discountPct: true,
+          safeIsPostMoney: true,
+          interestRatePct: true,
+          maturityDate: true,
+          shareClass: true,
+          shareCount: true,
+          pricePerShare: true,
+        },
+      });
+
+      const target = chooseTargetPosition(positions, terms);
+      if (target) {
+        const patch = gapsOnly(target, {
+          valuationCap: terms.valuationCap,
+          discountPct: terms.discountPct,
+          safeIsPostMoney: terms.safeIsPostMoney,
+          interestRatePct: terms.interestRatePct,
+          maturityDate: parseIsoDate(terms.maturityDate),
+          shareClass: terms.shareClass,
+          shareCount: terms.shareCount,
+          pricePerShare: terms.pricePerShare,
+        });
+        if (Object.keys(patch).length > 0) {
+          await prisma.position.update({ where: { id: target.id }, data: patch });
+        }
+        await prisma.document.update({
+          where: { id: document.id },
+          data: { positionId: target.id },
+        });
+      }
+    }
+  } catch (error) {
+    // The file is stored either way; extraction retries on the next sync.
+    revalidatePath(`/companies/${companyId}`);
+    return {
+      status: "error",
+      message: `Stored, but could not be read: ${error instanceof Error ? error.message : "unknown"}`,
+    };
+  }
+
+  revalidatePath(`/companies/${companyId}`);
 }
