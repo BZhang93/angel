@@ -148,7 +148,15 @@ export async function getCompanySummaries(
       unrealized,
       moic: moic(flows, mark),
       irr: irr(flows, { asOf, residualValue: unrealized }),
-      instruments: [...new Set(company.positions.map((position) => position.instrumentType))],
+      // An LP interest in an SPV holding a SAFE is, economically, a SAFE
+      // position: the underlying is what the list should show.
+      instruments: [
+        ...new Set(
+          company.positions.map(
+            (position) => position.underlyingInstrument ?? position.instrumentType,
+          ),
+        ),
+      ],
       positionCount: company.positions.length,
       investmentGroups: [
         ...new Set(

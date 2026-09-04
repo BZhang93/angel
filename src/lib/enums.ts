@@ -6,12 +6,20 @@ const options = (values: string[]) =>
 
 export const INSTRUMENT_OPTIONS = options([
   "SAFE",
+  "KISS",
   "CONVERTIBLE_NOTE",
   "PRICED_EQUITY",
   "SPV_LP",
   "TOKEN_WARRANT",
   "OTHER",
 ]);
+
+/// What a vehicle holds in the company. "Direct" means the investor holds the
+/// instrument themselves, so instrumentType already says it.
+export const UNDERLYING_OPTIONS = [
+  { value: "", label: "Direct or unknown" },
+  ...options(["SAFE", "KISS", "CONVERTIBLE_NOTE", "PRICED_EQUITY", "TOKEN_WARRANT", "OTHER"]),
+];
 
 export const HOLDING_ENTITY_OPTIONS = options(["PERSONAL", "LLC", "TRUST", "IRA", "OTHER"]);
 

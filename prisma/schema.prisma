@@ -52,8 +52,12 @@ enum Stage {
 
 enum InstrumentType {
   SAFE
+  /// Keep It Simple Security: a SAFE-like instrument with its own conventions.
+  KISS
   CONVERTIBLE_NOTE
   PRICED_EQUITY
+  /// An interest in a vehicle rather than in the company: what an investor
+  /// actually holds when they invest through a syndicate.
   SPV_LP
   TOKEN_WARRANT
   OTHER
@@ -273,7 +277,13 @@ model Position {
   userId         String
   companyId      String
   company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// What the investor holds directly. Through a syndicate this is SPV_LP: an
+  /// interest in the vehicle, not in the company.
   instrumentType InstrumentType
+  /// What the vehicle holds in the company. A Viaka SPV holds a SAFE, so the
+  /// investor's exposure is to a SAFE even though they own an LP interest.
+  /// Null for a direct investment, where instrumentType already says it.
+  underlyingInstrument InstrumentType?
   holdingEntity  HoldingEntity  @default(PERSONAL)
   /// Date the money went in. Starts the QSBS five-year clock and the IRR clock.
   investmentDate DateTime

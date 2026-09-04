@@ -124,6 +124,7 @@ export async function addPosition(form: FormData): Promise<ActionResult> {
       userId,
       companyId,
       instrumentType: (optionalStr(form, "instrumentType") ?? "SAFE") as InstrumentType,
+      underlyingInstrument: optionalStr(form, "underlyingInstrument") as InstrumentType | null,
       holdingEntity: (optionalStr(form, "holdingEntity") ?? "PERSONAL") as HoldingEntity,
       investmentDate,
       valuationCap: optionalNumber(form, "valuationCap"),

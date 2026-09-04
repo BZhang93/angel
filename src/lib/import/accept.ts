@@ -147,6 +147,7 @@ export async function acceptCandidate(
           userId,
           companyId: company.id,
           instrumentType: proposedPosition.instrumentType,
+          underlyingInstrument: proposedPosition.underlyingInstrument,
           investmentGroup: proposal.investmentGroup,
           investmentDate,
           valuationCap: proposedPosition.valuationCap,

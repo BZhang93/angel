@@ -40,10 +40,20 @@ export function relativeDays(days: number): string {
   return days >= 0 ? `in ${amount} ${unit}` : `${amount} ${unit} ago`;
 }
 
+/// Acronyms that would otherwise be title-cased into words.
+const ACRONYMS = new Set(["KISS", "SAFE", "SPV", "LP", "IPO", "QSBS", "MOIC", "IRR", "K1", "AI"]);
+
 export function titleCase(value: string): string {
+  if (ACRONYMS.has(value.toUpperCase().replace(/_/g, ""))) {
+    return value.toUpperCase().replace(/_/g, " ");
+  }
   return value
     .toLowerCase()
     .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) =>
+      ACRONYMS.has(word.toUpperCase())
+        ? word.toUpperCase()
+        : word.charAt(0).toUpperCase() + word.slice(1),
+    )
     .join(" ");
 }

@@ -4,6 +4,7 @@ import type { Proposal, ProposedPosition } from "./schema";
 
 const position = (over: Partial<ProposedPosition> = {}): ProposedPosition => ({
   instrumentType: "SPV_LP",
+  underlyingInstrument: null,
   amount: null,
   feesAmount: null,
   investmentDate: null,

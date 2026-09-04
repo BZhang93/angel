@@ -52,6 +52,7 @@ export async function applyTermsToPortfolio(
         userId,
         companyId,
         instrumentType: terms.instrumentType,
+        underlyingInstrument: terms.underlyingInstrument,
         investmentGroup: terms.investmentGroup,
         investmentDate,
         valuationCap: terms.valuationCap,
@@ -75,6 +76,7 @@ export async function applyTermsToPortfolio(
   // Compared field by field against a narrow view of the position, so the patch
   // is exactly the fillable columns and nothing from the relations.
   const current = {
+    underlyingInstrument: target.underlyingInstrument,
     investmentGroup: target.investmentGroup,
     valuationCap: target.valuationCap,
     discountPct: target.discountPct,
@@ -87,6 +89,7 @@ export async function applyTermsToPortfolio(
   };
 
   const patch = gapsOnly(current, {
+    underlyingInstrument: terms.underlyingInstrument,
     investmentGroup: terms.investmentGroup,
     valuationCap: terms.valuationCap,
     discountPct: terms.discountPct,

@@ -7,6 +7,7 @@ import {
   HOLDING_ENTITY_OPTIONS,
   INSTRUMENT_OPTIONS,
   STATUS_OPTIONS,
+  UNDERLYING_OPTIONS,
   TRANSACTION_OPTIONS,
   VALUATION_SOURCE_OPTIONS,
 } from "@/lib/enums";
@@ -166,6 +167,14 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
 
               const terms: [string, string][] = [
                 ["Entity", titleCase(position.holdingEntity)],
+                [
+                  "Underlying",
+                  position.underlyingInstrument
+                    ? titleCase(position.underlyingInstrument)
+                    : position.investmentGroup
+                      ? "Not stated"
+                      : "Held directly",
+                ],
                 ["Invested", shortDate(position.investmentDate)],
                 ["Cap", money(num(position.valuationCap))],
                 ["Discount", position.discountPct ? `${num(position.discountPct)}%` : "—"],
@@ -188,8 +197,23 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                 <div key={position.id} className="rounded-md border border-border p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold">{titleCase(position.instrumentType)}</h3>
-                      {position.investmentGroup && <Pill>via {position.investmentGroup}</Pill>}
+                      <h3 className="text-sm font-semibold">
+                        {titleCase(position.instrumentType)}
+                        {position.underlyingInstrument && (
+                          <span className="font-normal text-muted">
+                            {" "}
+                            holding {titleCase(position.underlyingInstrument)}
+                          </span>
+                        )}
+                      </h3>
+                      {position.investmentGroup && (
+                        <Link
+                          href="/vehicles"
+                          className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted hover:text-foreground"
+                        >
+                          via {position.investmentGroup}
+                        </Link>
+                      )}
                       {position.convertedIntoId && <Pill>Converted</Pill>}
                       {discrepancies.length > 0 && (
                         <span
@@ -266,6 +290,11 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
               <input type="hidden" name="companyId" value={company.id} />
               <div className="grid gap-3 sm:grid-cols-3">
                 <Select label="Instrument" name="instrumentType" options={INSTRUMENT_OPTIONS} />
+                <Select
+                  label="Vehicle holds"
+                  name="underlyingInstrument"
+                  options={UNDERLYING_OPTIONS}
+                />
                 <Select label="Holding entity" name="holdingEntity" options={HOLDING_ENTITY_OPTIONS} />
                 <Field label="Amount" name="amount" type="number" />
                 <Field label="Investment date" name="investmentDate" type="date" required />

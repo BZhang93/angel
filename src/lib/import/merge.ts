@@ -84,6 +84,7 @@ export function mergeInvestment(a: ProposedPosition, b: ProposedPosition): Propo
     investmentDate: primary.investmentDate ?? other.investmentDate,
     instrumentType:
       primary.instrumentType === "OTHER" ? other.instrumentType : primary.instrumentType,
+    underlyingInstrument: primary.underlyingInstrument ?? other.underlyingInstrument,
     valuationCap: primary.valuationCap ?? other.valuationCap,
     discountPct: primary.discountPct ?? other.discountPct,
     safeIsPostMoney: primary.safeIsPostMoney ?? other.safeIsPostMoney,

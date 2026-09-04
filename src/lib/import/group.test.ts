@@ -144,6 +144,7 @@ describe("proposal schema", () => {
       positions: [
         {
           instrumentType: "SPV_LP" as const,
+          underlyingInstrument: "SAFE" as const,
           amount: 3000,
           feesAmount: 283.5,
           investmentDate: "2026-09-03",

@@ -9,15 +9,28 @@ import { z } from "zod";
 // businesses; proposing the manager as a portfolio company is wrong, and
 // collapsing three investments into one loses the portfolio.
 
+const INSTRUMENTS = [
+  "SAFE",
+  "KISS",
+  "CONVERTIBLE_NOTE",
+  "PRICED_EQUITY",
+  "SPV_LP",
+  "TOKEN_WARRANT",
+  "OTHER",
+] as const;
+
 export const ProposedPositionSchema = z.object({
-  instrumentType: z.enum([
-    "SAFE",
-    "CONVERTIBLE_NOTE",
-    "PRICED_EQUITY",
-    "SPV_LP",
-    "TOKEN_WARRANT",
-    "OTHER",
-  ]),
+  instrumentType: z
+    .enum(INSTRUMENTS)
+    .describe(
+      "What the READER holds directly. Through a syndicate or SPV this is SPV_LP: an interest in the vehicle, not in the company.",
+    ),
+  underlyingInstrument: z
+    .enum(INSTRUMENTS)
+    .nullable()
+    .describe(
+      "What the vehicle holds IN THE COMPANY, when the reader's own holding is an SPV interest: usually SAFE, KISS, CONVERTIBLE_NOTE or PRICED_EQUITY. Null for a direct investment, and null if the emails never say.",
+    ),
   amount: z
     .number()
     .nullable()
