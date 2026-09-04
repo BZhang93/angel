@@ -9,10 +9,16 @@ export function ScanPanel({
   hasCandidates,
   importedCount,
   running,
+  readForImport,
+  totalStored,
 }: {
   defaultQuery: string;
   hasCandidates: boolean;
   importedCount: number;
+  /// Emails a previous scan has already read. A rescan skips these entirely:
+  /// no fetch and, more to the point, no model call.
+  readForImport: number;
+  totalStored: number;
   /// A scan started elsewhere (or before a reload) is still going: the button
   /// stays disabled so it cannot be launched twice.
   running: boolean;
@@ -55,7 +61,7 @@ export function ScanPanel({
         </p>
       </form>
 
-      {(hasCandidates || importedCount > 0) && (
+      {(hasCandidates || importedCount > 0 || readForImport > 0) && (
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
           {hasCandidates && (
             <button
@@ -66,6 +72,12 @@ export function ScanPanel({
             >
               Import All Proposals
             </button>
+          )}
+          {readForImport > 0 && (
+            <p className="text-xs text-muted">
+              {readForImport} of {totalStored} stored emails already read; a rescan only reads
+              what is new.
+            </p>
           )}
           {importedCount > 0 && (
             <p className="text-xs text-muted">

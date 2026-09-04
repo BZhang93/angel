@@ -455,6 +455,10 @@ model Update {
   reviewState     ReviewState @default(PENDING)
   /// Null until the extraction pass has run on this update.
   extractedAt     DateTime?
+  /// When the import scan last read this email looking for companies. Set once
+  /// a batch containing it completes, so a rescan only pays to read what is
+  /// new: the expensive half of a scan is the model, not the fetch.
+  importScannedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

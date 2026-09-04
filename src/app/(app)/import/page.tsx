@@ -25,6 +25,10 @@ export default async function ImportPage() {
     prisma.company.count({ where: { userId } }),
     prisma.update.count({ where: { userId, reviewState: "PENDING" } }),
   ]);
+  const [readForImport, totalStored] = await Promise.all([
+    prisma.update.count({ where: { userId, importScannedAt: { not: null } } }),
+    prisma.update.count({ where: { userId } }),
+  ]);
   const running = run?.state === "RUNNING";
 
   // The same company often arrives from two senders: the syndicate's own mail
@@ -79,6 +83,8 @@ export default async function ImportPage() {
           hasCandidates={candidates.length > 0}
           importedCount={importedCount}
           running={running}
+          readForImport={readForImport}
+          totalStored={totalStored}
         />
         </div>
       </Card>

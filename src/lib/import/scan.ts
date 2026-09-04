@@ -6,7 +6,7 @@ import { accessTokenFromRefresh, getMessage, listMessageIds } from "@/lib/gmail/
 import { domainOf } from "@/lib/gmail/match";
 import { evidenceBatches, groupBySenderDomain, type DomainGroup, type ScannedEmail } from "./group";
 import { normalizeCompanyName } from "./identity";
-import type { Proposal } from "./schema";
+import { CompanyProposalSchema, type Proposal } from "./schema";
 import { ScanGroupSchema, type ScanGroup } from "./schema";
 import { bumpRun, updateRun } from "@/lib/progress";
 
@@ -95,6 +95,9 @@ export interface ScanResult {
   domains: number;
   proposed: number;
   skipped: number;
+  /// Senders with nothing new since the last scan, read from neither Gmail nor
+  /// the model.
+  unchanged: number;
 }
 
 /// Reads the mailbox, groups by sender domain, and asks Claude which groups
@@ -121,6 +124,7 @@ export async function scanForCompanies(
     where: { userId, gmailMessageId: { in: ids } },
     select: {
       gmailMessageId: true,
+      importScannedAt: true,
       gmailThreadId: true,
       receivedAt: true,
       fromAddress: true,
@@ -142,6 +146,10 @@ export async function scanForCompanies(
   // One unreadable message must not lose a scan that has already fetched
   // hundreds. Everything retryable is handled inside the client; what reaches
   // here is a message that genuinely cannot be read.
+  const alreadyRead = new Set(
+    stored.filter((row) => row.importScannedAt != null).map((row) => row.gmailMessageId),
+  );
+
   const emails: ScannedEmail[] = stored.map((row) => ({
     gmailMessageId: row.gmailMessageId,
     gmailThreadId: row.gmailThreadId,
@@ -240,13 +248,27 @@ export async function scanForCompanies(
 
   let proposed = 0;
   let skipped = 0;
+  let unchanged = 0;
 
   for (const group of groups) {
     // Every email from this sender is read, in batches. Sampling was the
     // original approach and it lost whole companies: a syndicate sends every
     // deal from one address, so six emails out of seventy-two described six
     // emails, not the portfolio.
-    const batches = evidenceBatches(group);
+    const unread = {
+      ...group,
+      emails: group.emails.filter((email) => !alreadyRead.has(email.gmailMessageId)),
+    };
+
+    // Nothing new from this sender: no model call at all. This is what makes a
+    // rescan cheap, since the fetch was already being skipped for stored mail.
+    if (unread.emails.length === 0) {
+      unchanged += 1;
+      await bumpRun(runId, { doneItems: 1, step: `${group.domain}: nothing new` });
+      continue;
+    }
+
+    const batches = evidenceBatches(unread);
     const proposals = new Map<string, Proposal>();
     let skippedReason: string | null = null;
     let readAny = false;
@@ -272,8 +294,15 @@ export async function scanForCompanies(
         proposals.set(key, mergeProposals(proposals.get(key), proposal));
       }
 
+      // Stamped per batch rather than at the end, so an interrupted scan does
+      // not re-read everything it already paid for.
+      await prisma.update.updateMany({
+        where: { userId, gmailMessageId: { in: batch.map((email) => email.gmailMessageId) } },
+        data: { importScannedAt: new Date() },
+      });
+
       await bumpRun(runId, {
-        step: `${group.domain}: read ${Math.min((index + 1) * batch.length, group.emails.length)} of ${group.emails.length} emails, ${proposals.size} found`,
+        step: `${group.domain}: read ${Math.min((index + 1) * batch.length, unread.emails.length)} of ${unread.emails.length} new emails, ${proposals.size} found`,
       });
     }
 
@@ -289,12 +318,19 @@ export async function scanForCompanies(
       skippedReason,
     };
 
-    // Replace this domain's outstanding proposals rather than merging with
-    // them: a rescan is the newer, better reading, and a syndicate's company
-    // list changes between scans. Imported and dismissed rows are untouched.
-    await prisma.importCandidate.deleteMany({
+    // Merge with what earlier scans proposed for this sender rather than
+    // discarding it: this run only read the new mail, so the older reading is
+    // the only record of everything before it.
+    const previous = await prisma.importCandidate.findMany({
       where: { userId, sourceDomain: group.domain, state: "PROPOSED" },
     });
+    for (const row of previous) {
+      const parsed = CompanyProposalSchema.safeParse(row.payload);
+      if (!parsed.success) continue;
+      const key = normalizeCompanyName(parsed.data.name || row.proposedName);
+      if (!key) continue;
+      proposals.set(key, mergeProposals(proposals.get(key), parsed.data));
+    }
 
     if (result.companies.length === 0) {
       // Remember the rejection so the next scan does not pay to re-read it. The
@@ -361,5 +397,5 @@ export async function scanForCompanies(
     });
   }
 
-  return { scanned: emails.length, domains: groups.length, proposed, skipped };
+  return { scanned: emails.length, domains: groups.length, proposed, skipped, unchanged };
 }

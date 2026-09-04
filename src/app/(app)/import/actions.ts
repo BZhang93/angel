@@ -25,7 +25,7 @@ export async function runScan(form: FormData): Promise<ImportResult> {
 
   try {
     const result = await scanForCompanies(userId, { query: query || undefined, runId: run.id });
-    const message = `Read ${result.scanned} emails across ${result.domains} senders. ${result.proposed} proposed, ${result.skipped} not investments.`;
+    const message = `Read ${result.scanned} emails across ${result.domains} senders. ${result.proposed} proposed, ${result.skipped} not investments${result.unchanged ? `, ${result.unchanged} sender${result.unchanged === 1 ? "" : "s"} unchanged since the last scan` : ""}.`;
     await finishRun(run.id, message);
     revalidatePath("/import");
     return { status: "ok", message };
