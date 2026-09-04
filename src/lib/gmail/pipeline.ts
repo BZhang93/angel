@@ -4,6 +4,7 @@ import { decryptSecret } from "@/lib/crypto";
 import { accessTokenFromRefresh, watchMailbox } from "./client";
 import { syncGmail } from "./sync";
 import { rematchPendingUpdates } from "./rematch";
+import { recordWireInstructionFees } from "@/lib/import/wire-fees";
 import { fetchPendingLinks } from "@/lib/enrich/links";
 import { enrichCompanyProfiles } from "@/lib/enrich/company";
 import { extractPendingUpdates } from "@/lib/extract/apply";
@@ -19,6 +20,9 @@ export interface PipelineResult {
   filed: number;
   extracted: number;
   documents: number;
+  /// Fees taken from a syndicate's wire instructions, which state them long
+  /// before a bank transfer reveals them.
+  fees: number;
   pending: number;
 }
 
@@ -28,6 +32,9 @@ export async function runIngestPipeline(userId: string): Promise<PipelineResult>
   await fetchPendingLinks(userId);
   const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 60 });
   const documents = await extractPendingDocuments(userId);
+  // After extraction, so a wire table read here is compared against the
+  // commitment the same sync just filed rather than an empty position.
+  const wireFees = await recordWireInstructionFees(userId);
   await enrichCompanyProfiles(userId);
 
   return {
@@ -35,6 +42,7 @@ export async function runIngestPipeline(userId: string): Promise<PipelineResult>
     filed: rematch.matched,
     extracted: extraction.extracted,
     documents: documents.extracted,
+    fees: wireFees.feesRecorded,
     pending: rematch.stillPending,
   };
 }

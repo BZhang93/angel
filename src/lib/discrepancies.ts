@@ -10,6 +10,7 @@
 
 export type ClaimSource =
   | "EMAIL_COMMITMENT"
+  | "WIRE_INSTRUCTION"
   | "EMAIL_CONFIRMATION"
   | "BANK_TRANSFER"
   | "DOCUMENT"
@@ -34,6 +35,7 @@ export interface Discrepancy {
 
 const SOURCE_LABEL: Record<ClaimSource, string> = {
   EMAIL_COMMITMENT: "Your commitment email",
+  WIRE_INSTRUCTION: "The wire instructions",
   EMAIL_CONFIRMATION: "The confirmation email",
   BANK_TRANSFER: "The bank transfer",
   DOCUMENT: "The signed document",
@@ -51,31 +53,63 @@ const KIND_LABEL: Record<ClaimKind, string> = {
 /// penny is not worth a person's attention.
 const TOLERANCE = 0.02;
 
+/// "The bank transfer's" but "The wire instructions'". Every other label is
+/// singular, so the apostrophe-s was hardcoded until a plural one arrived.
+function possessive(label: string): string {
+  return label.endsWith("s") ? `${label}'` : `${label}'s`;
+}
+
+/// Agrees the verb with a plural label, for the same reason as above.
+function says(label: string): string {
+  return label.endsWith("s") ? "say" : "says";
+}
+
 function money(value: number): string {
   return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /// The value the portfolio treats as true for a kind: whatever the user entered
 /// if they entered one, else the most trustworthy source that stated it.
-/// Most trusted first. The investor's own statements outrank anything a third
-/// party said about the deal: what they typed into the app, then the signed
-/// document, then their own commitment email. A syndicate's confirmation and a
-/// bank's gross figure are evidence, but they describe the round or the wire
-/// rather than what was committed.
+///
+/// Which source is most trustworthy depends on what is being asserted, and
+/// getting this backwards blames the wrong source in the tooltip. For what was
+/// COMMITTED, the investor's own statements win: what they typed into the app,
+/// then the signed document, then their own reply. A bank's gross figure is
+/// about a wire, not a commitment, so it ranks low.
 const TRUST_ORDER: ClaimSource[] = [
   "MANUAL",
   "DOCUSIGN",
   "DOCUMENT",
   "EMAIL_COMMITMENT",
+  "WIRE_INSTRUCTION",
   "BANK_TRANSFER",
   "EMAIL_CONFIRMATION",
 ];
+
+/// For a FEE or a TOTAL the order changes: those are about money that moved,
+/// and the bank is the record of that. Wire instructions state the fee exactly,
+/// which no one else does before the wire, but they state what was ASKED FOR.
+/// A waived admin fee or a revised rate leaves the schedule stale while the
+/// transfer stays right, so the bank outranks it once one exists.
+const SETTLED_TRUST_ORDER: ClaimSource[] = [
+  "MANUAL",
+  "DOCUSIGN",
+  "DOCUMENT",
+  "BANK_TRANSFER",
+  "WIRE_INSTRUCTION",
+  "EMAIL_COMMITMENT",
+  "EMAIL_CONFIRMATION",
+];
+
+function trustOrder(kind: ClaimKind): ClaimSource[] {
+  return kind === "INVESTMENT" ? TRUST_ORDER : SETTLED_TRUST_ORDER;
+}
 
 export function agreedValue(claims: Claim[], kind: ClaimKind): Claim | null {
   const relevant = claims.filter((claim) => claim.kind === kind);
   if (relevant.length === 0) return null;
 
-  for (const source of TRUST_ORDER) {
+  for (const source of trustOrder(kind)) {
     const found = relevant.find((claim) => claim.source === source);
     if (found) return found;
   }
@@ -98,10 +132,12 @@ export function findDiscrepancies(claims: Claim[]): Discrepancy[] {
       found.push({
         source: claim.source,
         kind,
-        label: `${SOURCE_LABEL[claim.source]}'s ${KIND_LABEL[kind]} does not match`,
-        detail: `${SOURCE_LABEL[claim.source]} says ${money(claim.amount)}; ${SOURCE_LABEL[
-          agreed.source
-        ].toLowerCase()} says ${money(agreed.amount)}.`,
+        label: `${possessive(SOURCE_LABEL[claim.source])} ${KIND_LABEL[kind]} does not match`,
+        detail: `${SOURCE_LABEL[claim.source]} ${says(SOURCE_LABEL[claim.source])} ${money(
+          claim.amount,
+        )}; ${SOURCE_LABEL[agreed.source].toLowerCase()} ${says(
+          SOURCE_LABEL[agreed.source],
+        )} ${money(agreed.amount)}.`,
       });
     }
   }
@@ -120,7 +156,7 @@ export function findDiscrepancies(claims: Claim[]): Discrepancy[] {
     found.push({
       source: total.source,
       kind: "TOTAL",
-      label: `${SOURCE_LABEL[total.source]}'s total amount does not match`,
+      label: `${possessive(SOURCE_LABEL[total.source])} total amount does not match`,
       detail: `${SOURCE_LABEL[total.source]} shows ${money(total.amount)}, but ${money(
         investment.amount,
       )} invested${fee ? ` plus ${money(fee.amount)} of fees` : ""} comes to ${money(expected)}.`,

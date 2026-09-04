@@ -139,6 +139,22 @@ export async function recordPayment(
   // Fees the wire revealed are recorded as their own ledger line, so the return
   // is honest and the next reconciliation matches without re-deriving them.
   if (verdict.kind === "CONFIRMED_WITH_FEES") {
+    // Claimed as well as booked. Without this the fee exists in the ledger but
+    // not in the provenance, so the cross-check saw a $1,099 wire against a
+    // $1,000 investment and flagged every correctly reconciled position.
+    if (companyId) {
+      await recordClaim({
+        userId,
+        companyId,
+        positionId: verdict.positionId,
+        source: "BANK_TRANSFER",
+        kind: "FEE",
+        amount: verdict.impliedFees,
+        sourceQuote: input.payment.sourceQuote,
+        updateId: input.updateId,
+        paymentId: created.id,
+      });
+    }
     await prisma.transaction.create({
       data: {
         userId,

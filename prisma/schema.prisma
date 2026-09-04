@@ -181,6 +181,10 @@ enum PaymentState {
 /// say which source disagrees, not merely that something does.
 enum ClaimSource {
   EMAIL_COMMITMENT
+  /// A syndicate's wire instructions, which state the reader's commitment,
+  /// fees and total in one personalised row. The only exact statement of the
+  /// fee that exists before the money moves.
+  WIRE_INSTRUCTION
   EMAIL_CONFIRMATION
   BANK_TRANSFER
   DOCUMENT

@@ -69,19 +69,26 @@ Break these and the app quietly lies about money.
 3. **One position per cheque.** Two readings describe the same investment when their dates fall
    within ten weeks and either the amounts match or a bank figure exceeds a commitment by a
    fee-sized margin. See `lib/import/merge.ts`.
-4. **Amounts are attributed, not merged.** Every source records its own `AmountClaim`. Trust order
-   is manual, then signed document, then the investor's own commitment email, then the bank, then a
-   third party's confirmation. Conflicts surface as "Needs Review" naming the source.
-5. **Identity is deterministic.** `canonicalCompanyKey` decides that two names are one company.
+4. **Amounts are attributed, not merged.** Every source records its own `AmountClaim`, and a
+   ledger line without a matching claim is invisible to the cross-check, so write both. Trust
+   depends on what is being asserted: for what was committed the investor's own words win, for a
+   fee or a total the bank does, because those are records of money that moved. Conflicts surface
+   as "Needs Review" naming the source.
+5. **A fee has a source before a wire does.** A syndicate states the fee exactly, once, in a
+   personalised row of its wire instructions. Deriving it from a bank transfer instead only works
+   after the money moves, so a position awaiting a wire read as a cleaner deal than it is. The
+   table is parsed deterministically in `lib/import/wire-table.ts` and only accepted when the row
+   adds up; the model was asked to read it for seven imports and found it once.
+6. **Identity is deterministic.** `canonicalCompanyKey` decides that two names are one company.
    Fuzzy matching may suggest a merge; it must never perform one.
-6. **A sender domain is not a company website.** Two lists answer two questions: `isCompanyDomain`
+7. **A sender domain is not a company website.** Two lists answer two questions: `isCompanyDomain`
    (can this be a website) and `isGroupableSender` (is this sender's mail worth reading). A
    syndicate's or bank's domain is read for deals and transfers and is never an identity.
-7. **Provenance on everything extracted.** Every metric, signal, action item and term carries the
+8. **Provenance on everything extracted.** Every metric, signal, action item and term carries the
    verbatim sentence it came from. If it cannot be quoted, it is not recorded.
-8. **Only exactly one named company files an email.** A digest naming several files against none.
+9. **Only exactly one named company files an email.** A digest naming several files against none.
    A subject naming one is what the email is about and files at 0.9; a body-only mention is 0.85.
-9. **Never claim silence for a filing failure.** If unfiled mail mentions a company, say so and
+10. **Never claim silence for a filing failure.** If unfiled mail mentions a company, say so and
    point at the review queue instead of reporting the founder as quiet.
 
 ## External services and their traps
@@ -115,9 +122,12 @@ same extractor. Leave the integration in place behind its config.
 ## Current data state
 
 Seven companies, all held through Viaka, each with one position and amounts traced to a quote from
-the investor's own commitment email, with fees derived from the wire that settled them. Roughly 196
-stored emails. Documents were cleared during a reset; `scripts/reset-derived.mts` does that again if
+the investor's own commitment email. All seven now carry a fee: five from the wire instructions that
+stated it, four confirmed by the transfer that settled it. Roughly 196 stored emails. Documents were cleared during a reset; `scripts/reset-derived.mts` does that again if
 needed (dry run by default, `--confirm` to apply).
+
+Bravi is the one position flagged for review, correctly: its wire instructions billed $425 including
+a $250 admin fee waived for members, and $175 was wired. The flag names the schedule, not the bank.
 
 Two loose ends: Vessel's wire is filed but not yet extracted, so its position is not marked
 payment-confirmed; and existing positions predate `underlyingInstrument`, so they show "not stated"

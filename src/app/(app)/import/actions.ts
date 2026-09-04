@@ -9,6 +9,7 @@ import { acceptCandidate } from "@/lib/import/accept";
 import { rematchPendingUpdates } from "@/lib/gmail/rematch";
 import { extractPendingUpdates } from "@/lib/extract/apply";
 import { extractFromUpdate } from "@/lib/extract/update";
+import { recordWireInstructionFees } from "@/lib/import/wire-fees";
 
 export type ImportResult =
   | { status: "error"; message: string }
@@ -40,21 +41,36 @@ export async function runScan(form: FormData): Promise<ImportResult> {
 /// After a company exists, the mail about it can finally be filed and read.
 /// This is what closes the loop between the two halves of the flow: import
 /// creates the company, and the emails that proved it becomes its history.
-async function fileMailFor(userId: string): Promise<{ filed: number; extracted: number }> {
+async function fileMailFor(
+  userId: string,
+): Promise<{ filed: number; extracted: number; fees: number }> {
   const rematch = await rematchPendingUpdates(userId);
-  if (rematch.matched === 0) return { filed: 0, extracted: 0 };
+
+  // The fee pass runs whether or not anything was newly filed. A company
+  // imported from a proposal already has its position, and the wire
+  // instructions stating its fee may have been filed by an earlier run.
+  if (rematch.matched === 0) {
+    const fees = await recordWireInstructionFees(userId);
+    return { filed: 0, extracted: 0, fees: fees.feesRecorded };
+  }
 
   // Tracked as a run so the page can show what it is doing: extraction is model
   // calls, and a button that sits silent for minutes looks broken.
   const run = await startRun(userId, "SYNC", `Reading ${rematch.matched} newly filed emails`);
   try {
     const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 60 });
+    const fees = await recordWireInstructionFees(userId);
     await finishRun(run.id, `Read ${extraction.extracted} emails.`);
-    return { filed: rematch.matched, extracted: extraction.extracted };
+    return { filed: rematch.matched, extracted: extraction.extracted, fees: fees.feesRecorded };
   } catch (error) {
     await failRun(run.id, error instanceof Error ? error.message : "Extraction failed.");
-    return { filed: rematch.matched, extracted: 0 };
+    return { filed: rematch.matched, extracted: 0, fees: 0 };
   }
+}
+
+/// Reads as "and 2 fees" when there are any, and as nothing when there are not.
+function feeSuffix(fees: number): string {
+  return fees > 0 ? ` Recorded ${fees} fee${fees === 1 ? "" : "s"} from wire instructions.` : "";
 }
 
 export async function importCandidate(form: FormData): Promise<ImportResult> {
@@ -74,12 +90,14 @@ export async function importCandidate(form: FormData): Promise<ImportResult> {
   const filed = await fileMailFor(userId);
   revalidatePath("/", "layout");
 
-  return filed.filed > 0
-    ? {
-        status: "ok",
-        message: `Imported, and filed ${filed.filed} email${filed.filed === 1 ? "" : "s"} against your companies (${filed.extracted} read).`,
-      }
-    : undefined;
+  if (filed.filed === 0 && filed.fees === 0) return undefined;
+
+  return {
+    status: "ok",
+    message: filed.filed
+      ? `Imported, and filed ${filed.filed} email${filed.filed === 1 ? "" : "s"} against your companies (${filed.extracted} read).${feeSuffix(filed.fees)}`
+      : `Imported.${feeSuffix(filed.fees)}`,
+  };
 }
 
 /// Bulk accept. Anything that fails is reported by count rather than aborting
@@ -114,7 +132,7 @@ export async function importAll(): Promise<ImportResult> {
 
   return {
     status: "ok",
-    message: `Imported ${imported} compan${imported === 1 ? "y" : "ies"}${failed ? `, ${failed} could not be imported` : ""}.${filed.filed ? ` Filed ${filed.filed} email${filed.filed === 1 ? "" : "s"} against them and read ${filed.extracted}.` : ""}`,
+    message: `Imported ${imported} compan${imported === 1 ? "y" : "ies"}${failed ? `, ${failed} could not be imported` : ""}.${filed.filed ? ` Filed ${filed.filed} email${filed.filed === 1 ? "" : "s"} against them and read ${filed.extracted}.` : ""}${feeSuffix(filed.fees)}`,
   };
 }
 

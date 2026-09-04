@@ -105,4 +105,45 @@ describe("agreedValue", () => {
   it("returns null for a kind nobody stated", () => {
     expect(agreedValue([{ source: "MANUAL", kind: "INVESTMENT", amount: 1 }], "FEE")).toBeNull();
   });
+
+  it("blames the stale schedule, not the bank, when a fee was waived", () => {
+    // Viaka's wire instructions billed $175 of legal fees plus a $250 admin fee
+    // that members do not pay. Bryan signed up and wired $2,675. The schedule
+    // is the thing that no longer describes reality.
+    const found = findDiscrepancies([
+      { source: "EMAIL_COMMITMENT", kind: "INVESTMENT", amount: 2500 },
+      { source: "WIRE_INSTRUCTION", kind: "FEE", amount: 425 },
+      { source: "BANK_TRANSFER", kind: "FEE", amount: 175 },
+      { source: "BANK_TRANSFER", kind: "TOTAL", amount: 2675 },
+    ]);
+
+    expect(found).toHaveLength(1);
+    expect(found[0]!.source).toBe("WIRE_INSTRUCTION");
+    expect(found[0]!.label).toBe("The wire instructions' fee does not match");
+    expect(found[0]!.detail).toBe(
+      "The wire instructions say $425.00; the bank transfer says $175.00.",
+    );
+  });
+
+  it("takes the fee from the wire instructions when no wire has been recorded", () => {
+    const claims: Claim[] = [
+      { source: "EMAIL_COMMITMENT", kind: "INVESTMENT", amount: 3000 },
+      { source: "WIRE_INSTRUCTION", kind: "INVESTMENT", amount: 3000 },
+      { source: "WIRE_INSTRUCTION", kind: "FEE", amount: 283.5 },
+    ];
+
+    expect(agreedValue(claims, "FEE")?.amount).toBe(283.5);
+    expect(findDiscrepancies(claims)).toEqual([]);
+  });
+
+  it("still prefers the investor's own words for what was committed", () => {
+    const claims: Claim[] = [
+      { source: "EMAIL_COMMITMENT", kind: "INVESTMENT", amount: 2000 },
+      { source: "BANK_TRANSFER", kind: "TOTAL", amount: 2189 },
+      { source: "BANK_TRANSFER", kind: "FEE", amount: 189 },
+    ];
+
+    expect(agreedValue(claims, "INVESTMENT")?.source).toBe("EMAIL_COMMITMENT");
+    expect(findDiscrepancies(claims)).toEqual([]);
+  });
 });
