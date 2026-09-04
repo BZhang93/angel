@@ -8,6 +8,12 @@
 //   Name Commitment Legal Fees Admin Fees Total (USD)
 //   Bryan Zhang $2,000 $189 0 $2,189
 //
+// The columns are not always named the same way, and a one-investor email drops
+// the name entirely:
+//
+//   Investment | Fees | *Total*
+//   $1,000.00 $99.00 $1,099.00
+//
 // Leaving this to the model lost it every time: the table sits in one batch of
 // a long sender thread and reads as boilerplate, so seven imports produced one
 // fee. Deriving the fee from a bank transfer instead only works for deals that
@@ -29,15 +35,16 @@ export interface WireTable {
 
 type Column = "commitment" | "fee" | "total";
 
-/// Where each money column sits in the header, in the order it appears. Only
-/// the labels that carry a number are listed: "Name" and "Email Address" are
-/// deliberately absent, since a row may or may not restate them.
-const COLUMN_PATTERNS: Array<{ column: Column; pattern: RegExp }> = [
-  { column: "commitment", pattern: /commitment/i },
-  { column: "fee", pattern: /legal\s*fees?/i },
-  { column: "fee", pattern: /admin(?:istrative)?\s*fees?/i },
-  { column: "total", pattern: /total/i },
-];
+/// What a money column is called. "Name" and "Email Address" are deliberately
+/// absent: they carry no number, and a row may or may not restate them.
+const COMMITMENT = /commitment|investment/i;
+const TOTAL = /total/i;
+
+/// Every fee column, however it is labelled. Global, because a header often
+/// carries two ("Legal Fees Admin Fees") and sometimes one ("Fees"), and the
+/// count is what tells a row with a blank column from a row that matches the
+/// header exactly.
+const FEE = /\b(?:legal|admin(?:istrative)?)?\s*fees?\b/gi;
 
 const MONEY = /(?<![\w.])\$?\d[\d,]*(?:\.\d+)?/g;
 
@@ -50,10 +57,18 @@ const TOLERANCE = 0.02;
 
 function columnsOf(header: string): Column[] {
   const found: Array<{ column: Column; at: number }> = [];
-  for (const { column, pattern } of COLUMN_PATTERNS) {
-    const match = pattern.exec(header);
-    if (match) found.push({ column, at: match.index });
+
+  const commitment = COMMITMENT.exec(header);
+  if (commitment) found.push({ column: "commitment", at: commitment.index });
+
+  const total = TOTAL.exec(header);
+  if (total) found.push({ column: "total", at: total.index });
+
+  FEE.lastIndex = 0;
+  for (const fee of header.matchAll(FEE)) {
+    found.push({ column: "fee", at: fee.index });
   }
+
   return found.sort((a, b) => a.at - b.at).map((entry) => entry.column);
 }
 

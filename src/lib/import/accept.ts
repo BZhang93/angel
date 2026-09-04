@@ -205,13 +205,18 @@ export async function acceptCandidate(
       // position is recorded either way, with a task to confirm it, because an
       // unsent wire is exactly the thing that goes missing.
       if (!proposedPosition.amountConfirmed) {
+        // PAYMENT_DUE with the amount on it, because that is what closes it: a
+        // confirmed transfer of roughly this size settles the obligation. Left
+        // as a bare FOLLOW_UP it would carry nothing either auto-resolve rule
+        // could match, and would sit in the queue after the money had gone.
         await tx.actionItem.create({
           data: {
             userId,
             companyId: company.id,
-            kind: "FOLLOW_UP",
+            kind: "PAYMENT_DUE",
             title: `Confirm the wire to ${name} was sent`,
             detail: `Imported as a commitment rather than a confirmed payment. Source: "${proposedPosition.sourceQuote}"`,
+            amount: proposedPosition.amount ?? null,
             dueDate: investmentDate,
           },
         });

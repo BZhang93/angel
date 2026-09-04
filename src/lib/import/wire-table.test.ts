@@ -105,4 +105,17 @@ describe("parseWireTable", () => {
   it("returns null when there is no table at all", () => {
     expect(parseWireTable("Just a reminder to send this by tomorrow :)")).toBeNull();
   });
+
+  it("reads a table that says Investment rather than Commitment, and names nobody", () => {
+    // A one-investor wire email drops the name column entirely and labels the
+    // first column Investment. Requiring the word "commitment" missed it, and
+    // with it the only statement of that deal's fee.
+    const table = parseWireTable(
+      ["Investment | Fees | *Total*", "", "$1,000.00 $99.00 $1,099.00"].join("\n"),
+    );
+
+    expect(table?.commitment).toBe(1000);
+    expect(table?.fees).toBe(99);
+    expect(table?.total).toBe(1099);
+  });
 });

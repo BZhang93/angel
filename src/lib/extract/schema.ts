@@ -26,7 +26,14 @@ export const SIGNAL_KINDS = [
 
 export const SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 
-export const ACTION_KINDS = ["PRO_RATA", "CONSENT", "TAX_DOC", "INTRO", "FOLLOW_UP"] as const;
+export const ACTION_KINDS = [
+  "PRO_RATA",
+  "CONSENT",
+  "TAX_DOC",
+  "INTRO",
+  "FOLLOW_UP",
+  "PAYMENT_DUE",
+] as const;
 
 /// A bank transfer confirmation found in the mailbox. Independent evidence
 /// that money actually moved, which no investor update ever proves.
@@ -84,6 +91,15 @@ export const ExtractionSchema = z.object({
       kind: z.enum(ACTION_KINDS),
       title: z.string(),
       detail: z.string().nullable(),
+      /// Only for PAYMENT_DUE, and only when a figure is actually stated. This
+      /// is what lets a confirmed transfer close the reminder, so a guess here
+      /// would silently clear a debt that is still owed.
+      amount: z
+        .number()
+        .nullable()
+        .describe(
+          "For PAYMENT_DUE only: the dollar amount the reader must send or is owed, when the email states one. Null for every other kind, and null if no figure is given.",
+        ),
       dueDate: z
         .string()
         .nullable()

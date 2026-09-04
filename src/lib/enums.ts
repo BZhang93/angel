@@ -57,4 +57,5 @@ export const ACTION_KIND_OPTIONS = [
   { value: "TAX_DOC", label: "Tax document" },
   { value: "INTRO", label: "Intro" },
   { value: "FOLLOW_UP", label: "Follow up" },
+  { value: "PAYMENT_DUE", label: "Payment due" },
 ];

@@ -4,12 +4,31 @@ import { linkedTextForUpdate } from "@/lib/enrich/links";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { recordPayment } from "./payments";
 import type { Extraction } from "./schema";
+import { parseWireTable } from "@/lib/import/wire-table";
 
 // Writing an extraction back to the database.
 //
 // The provenance contract (prisma/schema.prisma) in one place: rows a human has
 // touched are never replaced. Re-running extraction on an update refreshes the
 // machine-written rows and leaves every corrected value alone.
+
+/// The amount a payment reminder is for, preferring what the model read and
+/// falling back to the wire table in the same email.
+///
+/// The model will not attribute an unlabelled "Investment | Fees | Total" row
+/// to the reader, and it is right to be careful: a wrong figure here closes a
+/// debt that is still owed. The table parser has no such doubt, because it only
+/// accepts a row that adds up. Fill, never overwrite: a figure the model did
+/// state always wins.
+function paymentAmount(
+  item: { kind: string; amount: number | null },
+  rawText: string | undefined,
+): number | null {
+  if (item.kind !== "PAYMENT_DUE") return null;
+  if (item.amount != null) return item.amount;
+  return rawText ? (parseWireTable(rawText)?.total ?? null) : null;
+}
+
 export async function applyExtraction(
   userId: string,
   updateId: string,
@@ -56,6 +75,9 @@ export async function applyExtraction(
         kind: item.kind,
         title: item.title,
         detail: item.detail,
+        // Only a payment carries one, whatever the model returns: an amount on
+        // an intro or a consent has nothing that could ever settle it.
+        amount: paymentAmount(item, context?.rawText),
         dueDate: parseDate(item.dueDate),
         sourceQuote: item.sourceQuote,
       })),

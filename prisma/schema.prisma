@@ -136,6 +136,10 @@ enum ActionKind {
   TAX_DOC
   INTRO
   FOLLOW_UP
+  /// Money the investor owes by a date: a capital call, or a wire against a
+  /// commitment. Carries `amount`, which is what lets a confirmed transfer
+  /// close it.
+  PAYMENT_DUE
 }
 
 enum ActionState {
@@ -547,6 +551,9 @@ model ActionItem {
   kind         ActionKind
   title        String
   detail       String?
+  /// Only for PAYMENT_DUE: the sum owed, so a transfer of that size can settle
+  /// it. Null on every other kind.
+  amount       Decimal?    @db.Decimal(18, 2)
   dueDate      DateTime?
   state        ActionState @default(OPEN)
   sourceQuote  String?

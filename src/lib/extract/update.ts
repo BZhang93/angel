@@ -10,6 +10,7 @@ Rules:
 - Normalise numbers to absolutes: "$1.2M ARR" becomes 1200000; "18 months of runway" becomes 18.
 - Signals: RISK is anything that could lose the investor money (runway, churn, litigation, a key departure, a missed plan). ASK is something the founder is asking the investor to do. Severity reflects the money at stake, not the founder's tone.
 - Action items are only things requiring a decision or a deadline from the investor, such as a pro-rata election or a consent form. A general "let me know if you have thoughts" is not an action item.
+- Use PAYMENT_DUE when the reader has to send or is owed money, such as a wire against a commitment or a capital call. Set amount to the TOTAL the reader must send, fees included, since that is the figure that will leave their account: given "Investment $1,000, Fees $99, Total $1,099", the amount is 1099. Only set it when the email states the figure; never derive one from a percentage or an example. Every other kind leaves amount null.
 - Founders write optimistically. Report the facts, not the framing.
 
 Two kinds of email are not investor updates and are handled by their own fields:

@@ -51,10 +51,18 @@ async function readerNames(userId: string): Promise<string[]> {
 
 export async function recordWireInstructionFees(userId: string): Promise<WireFeeResult> {
   const [updates, companies, names] = await Promise.all([
-    // "Commitment" appears in every table header and in little else, so this
-    // keeps the scan to a handful of emails rather than the whole mailbox.
+    // A cheap pre-filter on the header words, so the parser sees a shortlist
+    // rather than the whole mailbox. Both spellings are needed: a table is
+    // headed "Commitment" or "Investment" depending on who built it, and
+    // filtering on the first alone missed a whole deal's fee.
     prisma.update.findMany({
-      where: { userId, rawText: { contains: "Commitment", mode: "insensitive" } },
+      where: {
+        userId,
+        OR: [
+          { rawText: { contains: "Commitment", mode: "insensitive" } },
+          { rawText: { contains: "Investment", mode: "insensitive" } },
+        ],
+      },
       select: {
         id: true,
         companyId: true,
