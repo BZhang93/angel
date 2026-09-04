@@ -2,7 +2,7 @@
 // grouping rules are where a mailbox scan quietly goes wrong, by proposing
 // "Gmail" and "Substack" as portfolio companies.
 
-import { NON_COMPANY_DOMAINS as BLOCKED } from "./domains";
+import { isGroupableSender } from "./domains";
 
 export interface ScannedEmail {
   gmailMessageId: string;
@@ -73,7 +73,9 @@ export function groupBySenderDomain(
   for (const email of emails) {
     const domain = domainOfAddress(email.fromAddress);
     if (!domain) continue;
-    if (BLOCKED.has(domain)) continue;
+    // A syndicate's or a bank's domain is not a website, but its mail is
+    // exactly where the deals and the transfers are, so it is grouped.
+    if (!isGroupableSender(domain)) continue;
     if (known.has(domain)) continue;
 
     const bucket = groups.get(domain) ?? [];
@@ -97,13 +99,30 @@ export function groupBySenderDomain(
     .sort((a, b) => b.emails.length - a.emails.length);
 }
 
-/// Keeps the evidence sent to the model bounded: the newest emails plus the
-/// oldest one, which is usually the deal confirmation carrying the terms.
-export function evidenceFor(group: DomainGroup, opts: { maxEmails?: number } = {}): ScannedEmail[] {
-  const maxEmails = opts.maxEmails ?? 6;
-  if (group.emails.length <= maxEmails) return group.emails;
+/// Splits a sender's mail into batches the model reads in full.
+///
+/// Sampling was the original approach and it was wrong: a syndicate sends every
+/// deal from one address, so 72 emails covering ten companies were represented
+/// by six, and the other companies simply never existed as far as the scan was
+/// concerned. Reading everything costs more calls and finds what is actually
+/// there.
+///
+/// Batches run oldest first, because the earliest mail about a deal carries the
+/// commitment and its terms, and the newest is usually a routine update.
+export function evidenceBatches(
+  group: DomainGroup,
+  opts: { batchSize?: number; maxEmails?: number } = {},
+): ScannedEmail[][] {
+  const batchSize = opts.batchSize ?? 12;
+  const maxEmails = opts.maxEmails ?? 240;
 
-  const newest = group.emails.slice(0, maxEmails - 1);
-  const oldest = group.emails[group.emails.length - 1]!;
-  return [...newest, oldest];
+  const ordered = [...group.emails]
+    .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime())
+    .slice(0, maxEmails);
+
+  const batches: ScannedEmail[][] = [];
+  for (let index = 0; index < ordered.length; index += batchSize) {
+    batches.push(ordered.slice(index, index + batchSize));
+  }
+  return batches;
 }

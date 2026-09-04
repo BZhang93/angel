@@ -24,11 +24,51 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/// Whole-word, case-insensitive occurrence. Word boundaries matter: "Saile"
-/// must not match inside "assailed", and "Bravi" must not match "Bravissimo".
+/// Legal and descriptive tails a company is routinely referred to without.
+/// "Asendia AI" is called Asendia; "Marr Labs" is called Marr Labs.
+const DROPPABLE_TAIL = new Set([
+  "ai",
+  "inc",
+  "inc.",
+  "llc",
+  "ltd",
+  "ltd.",
+  "limited",
+  "corp",
+  "corp.",
+  "co",
+  "co.",
+  "technologies",
+  "tech",
+  "io",
+  "app",
+]);
+
+/// The forms an email might use for a company: its full name, and the same name
+/// with a droppable tail removed. Both must survive isMatchableName, so a
+/// company called "Health AI" never matches on "Health" alone.
+export function matchTokensFor(name: string): string[] {
+  const full = name.trim();
+  const tokens = new Set<string>();
+  if (isMatchableName(full)) tokens.add(full);
+
+  const words = full.split(/\s+/).filter(Boolean);
+  while (words.length > 1 && DROPPABLE_TAIL.has(words[words.length - 1]!.toLowerCase())) {
+    words.pop();
+    const shortened = words.join(" ");
+    if (isMatchableName(shortened)) tokens.add(shortened);
+  }
+
+  return [...tokens];
+}
+
+/// Whole-word, case-insensitive occurrence of any form of the name. Word
+/// boundaries matter: "Saile" must not match inside "assailed", and "Bravi"
+/// must not match "Bravissimo".
 export function mentionsCompany(text: string, name: string): boolean {
-  if (!isMatchableName(name)) return false;
-  return new RegExp(`\\b${escapeRegExp(name.trim())}\\b`, "i").test(text);
+  const tokens = matchTokensFor(name);
+  if (tokens.length === 0) return false;
+  return tokens.some((token) => new RegExp(`\\b${escapeRegExp(token)}\\b`, "i").test(text));
 }
 
 export interface ContentMatch {

@@ -4,7 +4,9 @@ import { decryptSecret } from "@/lib/crypto";
 import { extractStructured } from "@/lib/ai/client";
 import { accessTokenFromRefresh, getMessage, listMessageIds } from "@/lib/gmail/client";
 import { domainOf } from "@/lib/gmail/match";
-import { evidenceFor, groupBySenderDomain, type DomainGroup, type ScannedEmail } from "./group";
+import { evidenceBatches, groupBySenderDomain, type DomainGroup, type ScannedEmail } from "./group";
+import { normalizeCompanyName } from "./identity";
+import type { Proposal } from "./schema";
 import { ScanGroupSchema, type ScanGroup } from "./schema";
 import { bumpRun, updateRun } from "@/lib/progress";
 
@@ -32,10 +34,43 @@ General rules:
 - Use the Links list to identify each company's own website, which is the single most useful field for keeping one company from being entered twice. Prefer the company's own domain, and set website to null unless you can see it. NEVER use the sender's domain as a website: a syndicate, bank, or e-signature provider describes how the mail arrived, not who the company is. A document host or deal-room link is not a website either.
 - Report dates in ISO YYYY-MM-DD form.`;
 
+/// Two readings of the same company are combined rather than one replacing the
+/// other: an early email carries the commitment and its terms, a later one the
+/// website and sector, and neither batch sees both.
+function mergeProposals(existing: Proposal | undefined, incoming: Proposal): Proposal {
+  if (!existing) return incoming;
+
+  const positions = [...existing.positions];
+  for (const position of incoming.positions) {
+    const duplicate = positions.some(
+      (candidate) =>
+        candidate.amount === position.amount &&
+        candidate.investmentDate === position.investmentDate &&
+        candidate.instrumentType === position.instrumentType,
+    );
+    if (!duplicate) positions.push(position);
+  }
+
+  return {
+    ...existing,
+    // Prefer whichever batch actually found a value.
+    investmentGroup: existing.investmentGroup ?? incoming.investmentGroup,
+    website: existing.website ?? incoming.website,
+    sector: existing.sector ?? incoming.sector,
+    description: existing.description ?? incoming.description,
+    contactName: existing.contactName ?? incoming.contactName,
+    contactEmail: existing.contactEmail ?? incoming.contactEmail,
+    stage: existing.stage === "UNKNOWN" ? incoming.stage : existing.stage,
+    notes: [existing.notes, incoming.notes].filter(Boolean).join(" ") || null,
+    confidence: Math.max(existing.confidence, incoming.confidence),
+    positions,
+  };
+}
+
 function evidenceText(group: DomainGroup, emails: ScannedEmail[]): string {
   return [
     `Sender domain: ${group.domain}`,
-    `Emails: ${group.emails.length}`,
+    `Emails in this batch: ${emails.length} of ${group.emails.length} from this sender`,
     "",
     ...emails.map((email, index) =>
       [
@@ -207,19 +242,52 @@ export async function scanForCompanies(
   let skipped = 0;
 
   for (const group of groups) {
-    let result: ScanGroup;
-    try {
-      result = await extractStructured(
-        SYSTEM,
-        evidenceText(group, evidenceFor(group)),
-        ScanGroupSchema,
-      );
-    } catch {
-      // A group the model could not read is not a reason to abandon the scan.
+    // Every email from this sender is read, in batches. Sampling was the
+    // original approach and it lost whole companies: a syndicate sends every
+    // deal from one address, so six emails out of seventy-two described six
+    // emails, not the portfolio.
+    const batches = evidenceBatches(group);
+    const proposals = new Map<string, Proposal>();
+    let skippedReason: string | null = null;
+    let readAny = false;
+
+    for (const [index, batch] of batches.entries()) {
+      let result: ScanGroup;
+      try {
+        result = await extractStructured(
+          SYSTEM,
+          evidenceText(group, batch),
+          ScanGroupSchema,
+        );
+      } catch {
+        // One unreadable batch does not lose the others.
+        continue;
+      }
+      readAny = true;
+      skippedReason ??= result.skippedReason;
+
+      for (const proposal of result.companies) {
+        const key = normalizeCompanyName(proposal.name || group.guessedName);
+        if (!key) continue;
+        proposals.set(key, mergeProposals(proposals.get(key), proposal));
+      }
+
+      await bumpRun(runId, {
+        step: `${group.domain}: read ${Math.min((index + 1) * batch.length, group.emails.length)} of ${group.emails.length} emails, ${proposals.size} found`,
+      });
+    }
+
+    if (!readAny) {
       skipped += 1;
       await bumpRun(runId, { doneItems: 1 });
       continue;
     }
+
+    const result: ScanGroup = {
+      senderIsSyndicate: proposals.size > 1,
+      companies: [...proposals.values()],
+      skippedReason,
+    };
 
     // Replace this domain's outstanding proposals rather than merging with
     // them: a rescan is the newer, better reading, and a syndicate's company

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseDomain, isCompanyDomain } from "./domains";
+import { baseDomain, isCompanyDomain, isGroupableSender } from "./domains";
 
 describe("baseDomain", () => {
   it("reduces a host to its registrable domain", () => {
@@ -35,5 +35,26 @@ describe("isCompanyDomain", () => {
   it("rejects nonsense", () => {
     expect(isCompanyDomain(null)).toBe(false);
     expect(isCompanyDomain("localhost")).toBe(false);
+  });
+});
+
+describe("isGroupableSender", () => {
+  it("reads mail from syndicates, banks and e-signature providers", () => {
+    // The regression this guards: viaka.net was blocklisted to stop it being
+    // used as a website, which also stopped its 72 emails being read at all.
+    expect(isGroupableSender("viaka.net")).toBe(true);
+    expect(isGroupableSender("mail.transfers.bankofamerica.com")).toBe(true);
+    expect(isGroupableSender("docusign.net")).toBe(true);
+  });
+
+  it("still skips consumer mail and bulk senders", () => {
+    expect(isGroupableSender("gmail.com")).toBe(false);
+    expect(isGroupableSender("substack.com")).toBe(false);
+  });
+
+  it("keeps identity and readability as separate questions", () => {
+    // Read its mail, never treat it as a company's website.
+    expect(isGroupableSender("viaka.net")).toBe(true);
+    expect(isCompanyDomain("viaka.net")).toBe(false);
   });
 });

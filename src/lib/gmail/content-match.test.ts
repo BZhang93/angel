@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { matchCompanyByContent, mentionsCompany, type NamedCompany } from "./content-match";
+import {
+  matchCompanyByContent,
+  matchTokensFor,
+  mentionsCompany,
+  type NamedCompany,
+} from "./content-match";
 
 const companies: NamedCompany[] = [
   { companyId: "asendia", name: "Asendia" },
@@ -58,5 +63,34 @@ describe("matchCompanyByContent", () => {
 
   it("returns null when no company is named", () => {
     expect(matchCompanyByContent("Your statement is ready.", companies, { subject: "Statement" })).toBeNull();
+  });
+});
+
+describe("matchTokensFor", () => {
+  it("offers the name as an email would actually write it", () => {
+    expect(matchTokensFor("Asendia AI")).toEqual(["Asendia AI", "Asendia"]);
+    expect(matchTokensFor("Marr Labs Inc")).toEqual(["Marr Labs Inc", "Marr Labs"]);
+  });
+
+  it("never shortens a name down to something generic", () => {
+    expect(matchTokensFor("Health AI")).toEqual(["Health AI"]);
+  });
+
+  it("leaves a plain name alone", () => {
+    expect(matchTokensFor("Pintours")).toEqual(["Pintours"]);
+  });
+});
+
+describe("mentionsCompany with a shortened name", () => {
+  it("matches the form the email uses", () => {
+    // The real case: the subject says Asendia, the company is stored Asendia AI.
+    expect(mentionsCompany("Wire instructions for Asendia SPV", "Asendia AI")).toBe(true);
+    expect(mentionsCompany("Viaka Marr Labs 2026, LLC - Subscription Agreement", "Marr Labs")).toBe(
+      true,
+    );
+  });
+
+  it("still refuses a partial word", () => {
+    expect(mentionsCompany("Asendian rugs on sale", "Asendia AI")).toBe(false);
   });
 });

@@ -5,8 +5,13 @@
 // bank's domain masquerade as a company website makes every company that
 // syndicate ever emailed about look identical, and merges them into one.
 
-/// Consumer mail, bulk senders, banks, and the platforms that sit between an
-/// investor and a company. None of these is ever a portfolio company's website.
+/// Domains that can never be a company's own website. Broad on purpose: this
+/// governs IDENTITY, and letting a syndicate's or bank's domain stand for a
+/// company merges every company they wrote about into one.
+///
+/// It deliberately does NOT govern whose mail is worth reading. A syndicate's
+/// domain is where the deals are, and a bank's is where the transfers are, so
+/// both are read and neither is ever a website. See NON_GROUPING_DOMAINS.
 export const NON_COMPANY_DOMAINS = new Set([
   // Consumer mail
   "gmail.com",
@@ -101,4 +106,36 @@ export function isCompanyDomain(domain: string | null | undefined): boolean {
   if (INFRASTRUCTURE_PREFIXES.some((prefix) => host.startsWith(prefix))) return false;
   if (NON_COMPANY_DOMAINS.has(host)) return false;
   return !NON_COMPANY_DOMAINS.has(baseDomain(host));
+}
+
+
+/// Senders whose mail is not worth grouping into a company at all: consumer
+/// mail hosts and bulk marketing infrastructure. Everything else is read,
+/// including syndicates, banks and e-signature providers, because that is where
+/// the deals, the transfers and the signatures live.
+export const NON_GROUPING_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "yahoo.com",
+  "icloud.com",
+  "me.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+  "substack.com",
+  "mailchimp.com",
+  "mailchimpapp.net",
+  "sendgrid.net",
+  "mailgun.org",
+  "linkedin.com",
+  "google.com",
+]);
+
+export function isGroupableSender(domain: string | null | undefined): boolean {
+  if (!domain) return false;
+  const host = domain.toLowerCase().replace(/^www\./, "");
+  if (NON_GROUPING_DOMAINS.has(host)) return false;
+  return !NON_GROUPING_DOMAINS.has(baseDomain(host));
 }

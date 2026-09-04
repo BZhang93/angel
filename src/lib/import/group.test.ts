@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   domainOfAddress,
-  evidenceFor,
+  evidenceBatches,
   groupBySenderDomain,
   labelFromDomain,
   looksLikeCompanyName,
@@ -83,17 +83,30 @@ describe("groupBySenderDomain", () => {
   });
 });
 
-describe("evidenceFor", () => {
-  it("returns everything when the group is small", () => {
+describe("evidenceBatches", () => {
+  it("puts a small group in a single batch", () => {
     const group = groupBySenderDomain([
       email({ fromAddress: "a@acme.com" }),
       email({ fromAddress: "b@acme.com" }),
     ])[0]!;
-    expect(evidenceFor(group)).toHaveLength(2);
+    expect(evidenceBatches(group)).toHaveLength(1);
   });
 
-  it("keeps the newest few plus the oldest, where the terms usually live", () => {
-    const many = Array.from({ length: 10 }, (_, index) =>
+  it("reads every email rather than a sample", () => {
+    // The bug this replaces: a syndicate's 72 emails were represented by six,
+    // so deals mentioned nowhere in those six never existed.
+    const many = Array.from({ length: 30 }, (_, index) =>
+      email({ fromAddress: "deals@viaka.net", receivedAt: new Date(2026, 0, index + 1) }),
+    );
+    const group = groupBySenderDomain(many)[0]!;
+    const batches = evidenceBatches(group, { batchSize: 12 });
+
+    expect(batches).toHaveLength(3);
+    expect(batches.flat()).toHaveLength(30);
+  });
+
+  it("reads oldest first, where a commitment and its terms live", () => {
+    const many = Array.from({ length: 6 }, (_, index) =>
       email({
         fromAddress: "a@acme.com",
         subject: `mail ${index}`,
@@ -101,11 +114,15 @@ describe("evidenceFor", () => {
       }),
     );
     const group = groupBySenderDomain(many)[0]!;
-    const evidence = evidenceFor(group, { maxEmails: 4 });
+    expect(evidenceBatches(group, { batchSize: 3 })[0]![0]!.subject).toBe("mail 0");
+  });
 
-    expect(evidence).toHaveLength(4);
-    expect(evidence[0]!.subject).toBe("mail 9");
-    expect(evidence[3]!.subject).toBe("mail 0");
+  it("caps a runaway mailbox rather than reading it forever", () => {
+    const many = Array.from({ length: 500 }, (_, index) =>
+      email({ fromAddress: "a@acme.com", receivedAt: new Date(2026, 0, 1, index) }),
+    );
+    const group = groupBySenderDomain(many)[0]!;
+    expect(evidenceBatches(group, { batchSize: 12, maxEmails: 96 }).flat()).toHaveLength(96);
   });
 });
 
