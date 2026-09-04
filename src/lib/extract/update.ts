@@ -11,6 +11,10 @@ Rules:
 - Signals: RISK is anything that could lose the investor money (runway, churn, litigation, a key departure, a missed plan). ASK is something the founder is asking the investor to do. Severity reflects the money at stake, not the founder's tone.
 - Action items are only things requiring a decision or a deadline from the investor, such as a pro-rata election or a consent form. A general "let me know if you have thoughts" is not an action item.
 - Founders write optimistically. Report the facts, not the framing.
+
+Two kinds of email are not investor updates and are handled by their own fields:
+- A BANK TRANSFER confirmation (a wire receipt, a payment sent notice, an outgoing transfer alert). Fill payment: the gross amount that left the account, the value date, the beneficiary as the bank wrote it, and statedFees if the same email names legal or admin fees. Leave metrics and signals empty. The gross amount often bundles the investment and its fees; report the gross, and put the fees in statedFees rather than subtracting them yourself.
+- A SIGNED DOCUMENT notification (DocuSign, HelloSign, Dropbox Sign, Adobe Sign) saying an envelope was completed. Fill execution with the document title, the completion date and the company. Signing is not payment: never fill payment from one of these.
 - Empty arrays are the correct answer for an email that contains nothing of that kind.
 - Linked documents (an investment memo, a call transcript) count as part of this update: extract from them too, quoting them the same way. A number stated in a transcript is as real as one in the email body.`;
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { linkedTextForUpdate } from "@/lib/enrich/links";
+import { recordPayment } from "./payments";
 import type { Extraction } from "./schema";
 
 // Writing an extraction back to the database.
@@ -13,6 +14,7 @@ export async function applyExtraction(
   updateId: string,
   companyId: string,
   extraction: Extraction,
+  context?: { subject: string | null; rawText: string },
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await tx.updateMetric.deleteMany({ where: { updateId, editedByUser: false } });
@@ -63,6 +65,41 @@ export async function applyExtraction(
       data: { summary: extraction.summary, extractedAt: new Date() },
     });
   });
+
+  // A bank transfer is independent evidence that money moved, so it is
+  // reconciled against what the portfolio says was invested.
+  if (extraction.payment && context) {
+    await recordPayment(userId, {
+      updateId,
+      companyId,
+      subject: context.subject,
+      rawText: context.rawText,
+      payment: extraction.payment,
+    });
+  }
+
+  // A completed DocuSign envelope proves execution, not payment. It fills an
+  // empty investment date and marks the instrument as signed, nothing more.
+  if (extraction.execution) {
+    const signedDate = extraction.execution.signedDate
+      ? new Date(`${extraction.execution.signedDate}T00:00:00.000Z`)
+      : null;
+
+    if (signedDate && !Number.isNaN(signedDate.getTime())) {
+      await prisma.signal.create({
+        data: {
+          userId,
+          companyId,
+          updateId,
+          kind: "MILESTONE",
+          severity: "LOW",
+          summary: `Signed: ${extraction.execution.documentTitle}`,
+          sourceQuote: extraction.execution.sourceQuote,
+          derived: false,
+        },
+      });
+    }
+  }
 }
 
 function parseDate(value: string | null): Date | null {
@@ -103,7 +140,10 @@ export async function extractPendingUpdates(
         text: update.rawText,
         linkedText: await linkedTextForUpdate(update.id),
       });
-      await applyExtraction(userId, update.id, update.companyId!, result);
+      await applyExtraction(userId, update.id, update.companyId!, result, {
+        subject: update.subject,
+        rawText: update.rawText,
+      });
       extracted += 1;
     } catch {
       // One unreadable email must not stop the batch; it stays unextracted and

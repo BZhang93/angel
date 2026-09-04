@@ -8,6 +8,7 @@ import {
 import { getKeyDates } from "@/lib/data/calendar";
 import { money, multiple, percent, relativeDays, shortDate } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
+import { prisma } from "@/lib/prisma";
 
 export default async function DashboardPage() {
   const userId = await requireUserId();
@@ -18,6 +19,12 @@ export default async function DashboardPage() {
   // surfacing: they are silently missing from every total.
   const unrecorded = summaries.filter((company) => company.positionCount === 0).length;
   const keyDates = (await getKeyDates(userId, { asOf, horizonDays: 180 })).slice(0, 6);
+  const unreconciled = await prisma.payment.findMany({
+    where: { userId, state: { in: ["DISCREPANCY", "UNMATCHED"] } },
+    include: { company: { select: { id: true, name: true } } },
+    orderBy: { valueDate: "desc" },
+    take: 5,
+  });
 
   if (summaries.length === 0) {
     return (
@@ -73,6 +80,32 @@ export default async function DashboardPage() {
           }
         />
       </div>
+
+      {unreconciled.length > 0 && (
+        <Card title="Transfers To Reconcile">
+          <ul className="divide-y divide-border">
+            {unreconciled.map((payment) => (
+              <li key={payment.id} className="flex items-start justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">
+                    {payment.company ? (
+                      <Link href={`/companies/${payment.company.id}`} className="hover:underline">
+                        {payment.company.name}
+                      </Link>
+                    ) : (
+                      (payment.beneficiary ?? "Unmatched transfer")
+                    )}
+                  </span>
+                  <p className="text-sm text-muted">{payment.note}</p>
+                </div>
+                <span className="tabular shrink-0 text-sm">
+                  {money(Number(payment.amount.toString()))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Needs Attention">

@@ -339,6 +339,42 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
         </Card>
       </div>
 
+      {company.payments.length > 0 && (
+        <Card title="Bank Transfers">
+          <ul className="divide-y divide-border">
+            {company.payments.map((payment) => (
+              <li key={payment.id} className="flex items-start justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="tabular text-sm font-medium">
+                      {money(Number(payment.amount.toString()))}
+                    </span>
+                    <Pill>
+                      {payment.state === "CONFIRMED"
+                        ? "Confirms the investment"
+                        : payment.state === "DISCREPANCY"
+                          ? "Does not match"
+                          : titleCase(payment.state)}
+                    </Pill>
+                    {payment.beneficiary && (
+                      <span className="truncate text-xs text-muted">to {payment.beneficiary}</span>
+                    )}
+                  </div>
+                  {payment.note && (
+                    <p
+                      className={`mt-0.5 text-sm ${payment.state === "DISCREPANCY" ? "text-warn" : "text-muted"}`}
+                    >
+                      {payment.note}
+                    </p>
+                  )}
+                </div>
+                <span className="shrink-0 text-xs text-muted">{shortDate(payment.valueDate)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <Card title="Documents">
         {documentLinks.length === 0 ? (
           <p className="py-2 text-sm text-muted">

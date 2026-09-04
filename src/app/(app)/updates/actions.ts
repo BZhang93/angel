@@ -39,7 +39,10 @@ export async function confirmUpdate(form: FormData): Promise<UpdateActionResult>
       receivedAt: update.receivedAt,
       text: update.rawText,
     });
-    await applyExtraction(userId, updateId, companyId, extraction);
+    await applyExtraction(userId, updateId, companyId, extraction, {
+      subject: update.subject,
+      rawText: update.rawText,
+    });
   } catch (error) {
     // The assignment stands even if extraction fails; it retries on the next run.
     const message = error instanceof Error ? error.message : "Extraction failed.";

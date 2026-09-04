@@ -161,6 +161,18 @@ enum ScanState {
   FAILED
 }
 
+/// How a payment confirmation lines up against what was recorded.
+enum PaymentState {
+  /// No company or position could be matched to it yet.
+  UNMATCHED
+  /// Confirms a recorded investment, within tolerance.
+  CONFIRMED
+  /// Matched a company but the amount disagrees with what is recorded.
+  DISCREPANCY
+  /// Deliberately set aside by the user.
+  IGNORED
+}
+
 enum DocumentKind {
   SAFE
   NOTE
@@ -203,6 +215,7 @@ model Company {
   updatedAt DateTime @updatedAt
 
   positions   Position[]
+  payments    Payment[]
   valuations  Valuation[]
   updates     Update[]
   signals     Signal[]
@@ -296,6 +309,7 @@ model Position {
 
   transactions Transaction[]
   documents    Document[]
+  payments     Payment[]
 
   @@index([userId])
   @@index([companyId])
@@ -396,6 +410,7 @@ model Update {
   signals     Signal[]
   actionItems ActionItem[]
   documents   Document[]
+  payments    Payment[]
 
   @@unique([userId, gmailMessageId])
   @@index([userId, receivedAt])
@@ -590,4 +605,42 @@ model ScanRun {
   updatedAt  DateTime  @updatedAt
 
   @@index([userId, kind, startedAt])
+}
+
+/// A bank transfer confirmation found in the mailbox.
+///
+/// Independent evidence that money actually moved, which is the one thing an
+/// investor update never proves. Kept as its own record rather than folded
+/// straight into a Transaction: a payment that disagrees with what is recorded
+/// is a fact worth keeping, not an error to overwrite.
+model Payment {
+  id        String  @id @default(uuid())
+  userId    String
+  updateId  String?
+  update    Update? @relation(fields: [updateId], references: [id], onDelete: SetNull)
+  /// Null until matched to a company.
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  /// The position this payment settles, once reconciled.
+  positionId String?
+  position   Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  /// The gross amount that left the account, fees included.
+  amount      Decimal      @db.Decimal(18, 2)
+  currency    String       @default("USD")
+  valueDate   DateTime
+  /// Who received it, as the bank wrote it.
+  beneficiary String?
+  reference   String?
+  state       PaymentState @default(UNMATCHED)
+  /// How the reconciliation read it, in words: what matched, what did not, and
+  /// what was assumed about fees.
+  note        String?
+  sourceQuote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, state])
+  @@index([companyId])
 }

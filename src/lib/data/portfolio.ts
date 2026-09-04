@@ -216,6 +216,7 @@ export async function getCompanyDetail(userId: string, companyId: string) {
         include: { metrics: true, signals: true, actionItems: true },
       },
       actionItems: { orderBy: [{ state: "asc" }, { dueDate: "asc" }] },
+      payments: { orderBy: { valueDate: "desc" } },
       documents: true,
     },
   });

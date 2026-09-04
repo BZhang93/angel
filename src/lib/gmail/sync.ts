@@ -4,6 +4,7 @@ import { decryptSecret } from "@/lib/crypto";
 import { accessTokenFromRefresh, getMessage, listMessageIds } from "./client";
 import { ingestAttachments } from "./attachments";
 import { AUTO_MATCH_THRESHOLD, matchCompany, type MatchCandidate } from "./match";
+import { matchCompanyByContent } from "./content-match";
 
 export interface SyncResult {
   fetched: number;
@@ -58,7 +59,16 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
     }
     if (!email.text.trim()) continue;
 
-    const match = matchCompany(email, candidates);
+    // Sender first. Failing that, what the email says: DocuSign and banks send
+    // from their own domain about one of your companies.
+    const senderMatch = matchCompany(email, candidates);
+    const match =
+      senderMatch ??
+      matchCompanyByContent(
+        email.text,
+        candidates.map((candidate) => ({ companyId: candidate.companyId, name: candidate.name })),
+        { subject: email.subject },
+      );
     const confident = match != null && match.confidence >= AUTO_MATCH_THRESHOLD;
 
     const created_ = await prisma.update.create({
