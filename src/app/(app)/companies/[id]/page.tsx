@@ -95,7 +95,21 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
         </div>
       </div>
 
-      {summary && (
+      {company.notes && (
+        <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
+          {company.notes}
+        </p>
+      )}
+
+      {summary && summary.positionCount === 0 && (
+        <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted">
+          No position recorded yet, so this company has no deployed capital, MOIC or IRR. The
+          emails proved you are an investor but never stated an amount. Add the cheque under
+          Positions below.
+        </p>
+      )}
+
+      {summary && summary.positionCount > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
             { label: "Deployed", value: money(summary.deployed) },

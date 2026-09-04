@@ -14,6 +14,9 @@ export default async function DashboardPage() {
   const asOf = new Date();
   const summaries = await getCompanySummaries(userId, asOf);
   const totals = rollUp(summaries);
+  // Companies proved by investor updates but with no cheque on file. Worth
+  // surfacing: they are silently missing from every total.
+  const unrecorded = summaries.filter((company) => company.positionCount === 0).length;
   const keyDates = (await getKeyDates(userId, { asOf, horizonDays: 180 })).slice(0, 6);
 
   if (summaries.length === 0) {
@@ -63,7 +66,11 @@ export default async function DashboardPage() {
         <Stat
           label="Status"
           value={`${totals.activeCount} active`}
-          sub={`${totals.exitedCount} exited · ${totals.deadCount} written off`}
+          sub={
+            unrecorded > 0
+              ? `${totals.exitedCount} exited · ${unrecorded} without an amount`
+              : `${totals.exitedCount} exited · ${totals.deadCount} written off`
+          }
         />
       </div>
 

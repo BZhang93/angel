@@ -62,6 +62,7 @@ export async function acceptCandidate(
         stage: proposal.stage,
         status: "ACTIVE",
         sourcedBy: "Gmail import",
+        notes: proposal.notes ? `Import note: ${proposal.notes}` : null,
       },
       update: {},
     });

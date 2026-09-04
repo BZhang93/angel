@@ -69,12 +69,23 @@ export default async function CompaniesPage() {
                     ))}
                   </div>
                 </td>
-                <td className="tabular px-4 py-2 text-right">{money(company.deployed)}</td>
-                <td className="tabular px-4 py-2 text-right">
-                  {money(company.realized + company.unrealized)}
-                </td>
-                <td className="tabular px-4 py-2 text-right">{multiple(company.moic)}</td>
-                <td className="tabular px-4 py-2 text-right">{percent(company.irr)}</td>
+                {company.positionCount === 0 ? (
+                  <td colSpan={4} className="px-4 py-2 text-right text-sm text-muted">
+                    No position recorded —{" "}
+                    <Link href={`/companies/${company.id}`} className="underline">
+                      add the amount
+                    </Link>
+                  </td>
+                ) : (
+                  <>
+                    <td className="tabular px-4 py-2 text-right">{money(company.deployed)}</td>
+                    <td className="tabular px-4 py-2 text-right">
+                      {money(company.realized + company.unrealized)}
+                    </td>
+                    <td className="tabular px-4 py-2 text-right">{multiple(company.moic)}</td>
+                    <td className="tabular px-4 py-2 text-right">{percent(company.irr)}</td>
+                  </>
+                )}
                 <td className="px-4 py-2 text-muted">{shortDate(company.lastUpdateAt)}</td>
                 <td className="px-4 py-2">
                   <div className="flex flex-wrap gap-1">

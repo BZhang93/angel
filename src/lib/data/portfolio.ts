@@ -40,6 +40,9 @@ export interface CompanySummary {
   moic: number | null;
   irr: number | null;
   instruments: string[];
+  /// Zero means the amount is unknown, not that nothing was invested: an
+  /// investor update proves ownership without ever stating a cheque.
+  positionCount: number;
   /// Distinct syndicates or SPV managers the company is held through.
   investmentGroups: string[];
   firstInvestmentAt: Date | null;
@@ -113,6 +116,7 @@ export async function getCompanySummaries(
       moic: moic(flows, mark),
       irr: irr(flows, { asOf, residualValue: unrealized }),
       instruments: [...new Set(company.positions.map((position) => position.instrumentType))],
+      positionCount: company.positions.length,
       investmentGroups: [
         ...new Set(
           company.positions
