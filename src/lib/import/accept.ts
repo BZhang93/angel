@@ -25,7 +25,7 @@ export function parseProposal(payload: unknown): Proposal | null {
 /// existing company or creating a new one.
 export async function previewAccept(
   userId: string,
-  input: { name: string; website: string | null },
+  input: { name: string; website: string | null; vehicle?: string | null },
 ): Promise<{ mergesInto: string; reason: string } | null> {
   const existing = await prisma.company.findMany({
     where: { userId },
@@ -80,7 +80,10 @@ export async function acceptCandidate(
     where: { userId },
     select: { id: true, name: true, website: true },
   });
-  const match = findExistingCompany({ name, website }, existing);
+  const match = findExistingCompany(
+    { name, website, vehicle: proposal.investmentGroup },
+    existing,
+  );
 
   // Collected inside the transaction, written after it: claims are commentary
   // on the portfolio rather than part of it, and must not hold the write open.

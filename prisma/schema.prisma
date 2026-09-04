@@ -620,10 +620,14 @@ model Document {
 model ImportCandidate {
   id           String         @id @default(uuid())
   userId       String
-  /// Sender domain the evidence was grouped by. For a direct investment this is
-  /// the company's own domain; for a syndicate it is the manager's, and several
-  /// candidates share it.
+  /// A stable key for "this company, however it was written". One candidate per
+  /// company, no matter how many senders described it.
+  canonicalName String
+  /// The sender the proposal was first built from, kept for display.
   sourceDomain String
+  /// Every sender that described this company: the syndicate, the bank, the
+  /// e-signature provider.
+  sourceDomains String[]
   /// The syndicate or SPV manager, when the investment came through one.
   investmentGroup String?
   proposedName String
@@ -640,9 +644,9 @@ model ImportCandidate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// One row per proposed company, not per sender: a syndicate's mail covers
-  /// several underlying companies and each is its own candidate.
-  @@unique([userId, sourceDomain, proposedName])
+  /// One row per company, full stop. Keying by sender produced four cards for
+  /// one deal: the syndicate's, the bank's, DocuSign's and the reply.
+  @@unique([userId, canonicalName])
   @@index([userId, state])
 }
 

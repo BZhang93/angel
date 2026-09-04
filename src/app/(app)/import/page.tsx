@@ -2,7 +2,7 @@ import { Card, EmptyState, Pill } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { parseProposal, previewAccept } from "@/lib/import/accept";
 import { isCompanyDomain } from "@/lib/import/domains";
-import { normalizeCompanyName } from "@/lib/import/identity";
+
 import { domainOfWebsite } from "@/lib/import/identity";
 import { money, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
@@ -31,15 +31,7 @@ export default async function ImportPage() {
   ]);
   const running = run?.state === "RUNNING";
 
-  // The same company often arrives from two senders: the syndicate's own mail
-  // and the bank transfer confirming it. Shown together rather than as two
-  // unrelated cards, because importing both is the right move: one supplies the
-  // terms, the other the amount.
-  const siblingsByName = new Map<string, string[]>();
-  for (const candidate of candidates) {
-    const key = normalizeCompanyName(candidate.proposedName);
-    siblingsByName.set(key, [...(siblingsByName.get(key) ?? []), candidate.sourceDomain]);
-  }
+
 
   if (!account) {
     return (
@@ -114,9 +106,6 @@ export default async function ImportPage() {
               );
             }
 
-            const siblings = (siblingsByName.get(normalizeCompanyName(candidate.proposedName)) ?? [])
-              .filter((domain) => domain !== candidate.sourceDomain);
-
             return (
               <Card key={candidate.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -126,7 +115,12 @@ export default async function ImportPage() {
                       {proposal.investmentGroup && (
                         <Pill>via {proposal.investmentGroup}</Pill>
                       )}
-                      <Pill>{candidate.sourceDomain}</Pill>
+                      {(candidate.sourceDomains.length > 0
+                        ? candidate.sourceDomains
+                        : [candidate.sourceDomain]
+                      ).map((domain) => (
+                        <Pill key={domain}>{domain}</Pill>
+                      ))}
                       <Pill>
                         {candidate.emailCount} email{candidate.emailCount === 1 ? "" : "s"}
                       </Pill>
@@ -182,10 +176,10 @@ export default async function ImportPage() {
                   <p className="mt-2 text-xs text-warn">{proposal.notes}</p>
                 )}
 
-                {siblings.length > 0 && (
+                {candidate.sourceDomains.length > 1 && (
                   <p className="mt-2 text-xs text-muted">
-                    Also proposed from {siblings.join(", ")}. Import both: they combine into one
-                    company, and one source usually supplies terms the other lacks.
+                    Assembled from {candidate.sourceDomains.length} senders: the amount, the terms
+                    and the confirmation rarely come from the same one.
                   </p>
                 )}
 
@@ -201,6 +195,7 @@ export default async function ImportPage() {
                     website: isCompanyDomain(domainOfWebsite(proposal.website))
                       ? proposal.website
                       : null,
+                    vehicle: proposal.investmentGroup,
                   })}
                 />
               </Card>

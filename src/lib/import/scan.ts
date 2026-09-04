@@ -5,7 +5,8 @@ import { extractStructured } from "@/lib/ai/client";
 import { accessTokenFromRefresh, getMessage, listMessageIds } from "@/lib/gmail/client";
 import { domainOf } from "@/lib/gmail/match";
 import { evidenceBatches, groupBySenderDomain, type DomainGroup, type ScannedEmail } from "./group";
-import { normalizeCompanyName } from "./identity";
+import { canonicalCompanyKey } from "./identity";
+import { mergeProposals } from "./merge";
 import { CompanyProposalSchema, type Proposal } from "./schema";
 import { ScanGroupSchema, type ScanGroup } from "./schema";
 import { bumpRun, updateRun } from "@/lib/progress";
@@ -35,39 +36,6 @@ General rules:
 - A countersigned document listed under Attachments (a SAFE, note or subscription agreement) is strong evidence of an investment even when the covering email is one line. The document's contents are read separately, so do not invent terms from its filename.
 - Use the Links list to identify each company's own website, which is the single most useful field for keeping one company from being entered twice. Prefer the company's own domain, and set website to null unless you can see it. NEVER use the sender's domain as a website: a syndicate, bank, or e-signature provider describes how the mail arrived, not who the company is. A document host or deal-room link is not a website either.
 - Report dates in ISO YYYY-MM-DD form.`;
-
-/// Two readings of the same company are combined rather than one replacing the
-/// other: an early email carries the commitment and its terms, a later one the
-/// website and sector, and neither batch sees both.
-function mergeProposals(existing: Proposal | undefined, incoming: Proposal): Proposal {
-  if (!existing) return incoming;
-
-  const positions = [...existing.positions];
-  for (const position of incoming.positions) {
-    const duplicate = positions.some(
-      (candidate) =>
-        candidate.amount === position.amount &&
-        candidate.investmentDate === position.investmentDate &&
-        candidate.instrumentType === position.instrumentType,
-    );
-    if (!duplicate) positions.push(position);
-  }
-
-  return {
-    ...existing,
-    // Prefer whichever batch actually found a value.
-    investmentGroup: existing.investmentGroup ?? incoming.investmentGroup,
-    website: existing.website ?? incoming.website,
-    sector: existing.sector ?? incoming.sector,
-    description: existing.description ?? incoming.description,
-    contactName: existing.contactName ?? incoming.contactName,
-    contactEmail: existing.contactEmail ?? incoming.contactEmail,
-    stage: existing.stage === "UNKNOWN" ? incoming.stage : existing.stage,
-    notes: [existing.notes, incoming.notes].filter(Boolean).join(" ") || null,
-    confidence: Math.max(existing.confidence, incoming.confidence),
-    positions,
-  };
-}
 
 /// The mailbox owner's own address, so their replies can be marked as theirs in
 /// the evidence. Without it the model cannot tell a commitment from an
@@ -260,6 +228,11 @@ export async function scanForCompanies(
   let skipped = 0;
   let unchanged = 0;
 
+  // Keyed by company, across every sender. A syndicate, a bank, an e-signature
+  // provider and the investor's own reply all describe one deal, and keying by
+  // sender is what turned that into four cards and three positions.
+  const byCompany = new Map<string, { proposal: Proposal; domains: Set<string> }>();
+
   for (const group of groups) {
     // Every email from this sender is read, in batches. Sampling was the
     // original approach and it lost whole companies: a syndicate sends every
@@ -279,7 +252,6 @@ export async function scanForCompanies(
     }
 
     const batches = evidenceBatches(unread);
-    const proposals = new Map<string, Proposal>();
     let skippedReason: string | null = null;
     let readAny = false;
 
@@ -299,9 +271,16 @@ export async function scanForCompanies(
       skippedReason ??= result.skippedReason;
 
       for (const proposal of result.companies) {
-        const key = normalizeCompanyName(proposal.name || group.guessedName);
+        const key = canonicalCompanyKey(proposal.name || group.guessedName, {
+          vehicle: proposal.investmentGroup,
+        });
         if (!key) continue;
-        proposals.set(key, mergeProposals(proposals.get(key), proposal));
+
+        const entry = byCompany.get(key);
+        byCompany.set(key, {
+          proposal: mergeProposals(entry?.proposal, proposal),
+          domains: (entry?.domains ?? new Set<string>()).add(group.domain),
+        });
       }
 
       // Stamped per batch rather than at the end, so an interrupted scan does
@@ -312,7 +291,7 @@ export async function scanForCompanies(
       });
 
       await bumpRun(runId, {
-        step: `${group.domain}: read ${Math.min((index + 1) * batch.length, unread.emails.length)} of ${unread.emails.length} new emails, ${proposals.size} found`,
+        step: `${group.domain}: read ${Math.min((index + 1) * batch.length, unread.emails.length)} of ${unread.emails.length} new emails, ${byCompany.size} compan${byCompany.size === 1 ? "y" : "ies"} so far`,
       });
     }
 
@@ -321,90 +300,66 @@ export async function scanForCompanies(
       await bumpRun(runId, { doneItems: 1 });
       continue;
     }
+    if (skippedReason && byCompany.size === 0) skipped += 1;
 
-    const result: ScanGroup = {
-      senderIsSyndicate: proposals.size > 1,
-      companies: [...proposals.values()],
-      skippedReason,
-    };
+    await bumpRun(runId, { doneItems: 1, step: `${group.domain}: done` });
+  }
 
-    // Merge with what earlier scans proposed for this sender rather than
-    // discarding it: this run only read the new mail, so the older reading is
-    // the only record of everything before it.
-    const previous = await prisma.importCandidate.findMany({
-      where: { userId, sourceDomain: group.domain, state: "PROPOSED" },
+  // Written once, after every sender has been read, so a company described by
+  // four of them is one row carrying what all four knew.
+  await updateRun(runId, { step: "Merging what each sender said" });
+
+  const settled = new Set(
+    (
+      await prisma.importCandidate.findMany({
+        where: { userId, state: { in: ["IMPORTED", "DISMISSED"] } },
+        select: { canonicalName: true },
+      })
+    ).map((row) => row.canonicalName),
+  );
+
+  for (const [key, entry] of byCompany) {
+    // An earlier decision stands: a company already imported or dismissed is
+    // not proposed again.
+    if (settled.has(key)) continue;
+
+    const existing = await prisma.importCandidate.findUnique({
+      where: { userId_canonicalName: { userId, canonicalName: key } },
     });
-    for (const row of previous) {
-      const parsed = CompanyProposalSchema.safeParse(row.payload);
-      if (!parsed.success) continue;
-      const key = normalizeCompanyName(parsed.data.name || row.proposedName);
-      if (!key) continue;
-      proposals.set(key, mergeProposals(proposals.get(key), parsed.data));
+
+    // Merge with an earlier scan's reading, since this run only read new mail.
+    let proposal = entry.proposal;
+    const domains = new Set(entry.domains);
+    if (existing) {
+      const parsed = CompanyProposalSchema.safeParse(existing.payload);
+      if (parsed.success) proposal = mergeProposals(parsed.data, proposal);
+      for (const domain of existing.sourceDomains) domains.add(domain);
     }
 
-    if (result.companies.length === 0) {
-      // Remember the rejection so the next scan does not pay to re-read it. The
-      // domain, not a company name, is what gets skipped next time.
-      await prisma.importCandidate.upsert({
-        where: {
-          userId_sourceDomain_proposedName: {
-            userId,
-            sourceDomain: group.domain,
-            proposedName: group.guessedName,
-          },
-        },
-        create: {
-          userId,
-          sourceDomain: group.domain,
-          proposedName: group.guessedName,
-          payload: { skippedReason: result.skippedReason },
-          emailCount: group.emails.length,
-          state: "DISMISSED",
-        },
-        update: { state: "DISMISSED", payload: { skippedReason: result.skippedReason } },
-      });
-      skipped += 1;
-      await bumpRun(runId, { doneItems: 1, step: `Reviewed ${group.domain}` });
-      continue;
-    }
-
-    // One candidate per underlying company. A syndicate domain covering three
-    // deals produces three rows, each carrying the manager as its group.
-    for (const proposal of result.companies) {
-      const proposedName = proposal.name?.trim() || group.guessedName;
-
-      await prisma.importCandidate.upsert({
-        where: {
-          userId_sourceDomain_proposedName: { userId, sourceDomain: group.domain, proposedName },
-        },
-        create: {
-          userId,
-          sourceDomain: group.domain,
-          investmentGroup: proposal.investmentGroup,
-          proposedName,
-          payload: proposal,
-          emailCount: group.emails.length,
-          confidence: proposal.confidence,
-          state: "PROPOSED",
-        },
-        update: {
-          investmentGroup: proposal.investmentGroup,
-          payload: proposal,
-          emailCount: group.emails.length,
-          confidence: proposal.confidence,
-          state: "PROPOSED",
-        },
-      });
-      proposed += 1;
-    }
-
-    // Written before the next sender is read, which is what lets the page show
-    // proposals arriving rather than all at once at the end.
-    await bumpRun(runId, {
-      doneItems: 1,
-      produced: result.companies.length,
-      step: `Found ${result.companies.map((company) => company.name).join(", ")}`,
+    await prisma.importCandidate.upsert({
+      where: { userId_canonicalName: { userId, canonicalName: key } },
+      create: {
+        userId,
+        canonicalName: key,
+        proposedName: proposal.name,
+        sourceDomain: [...domains][0] ?? "",
+        sourceDomains: [...domains],
+        investmentGroup: proposal.investmentGroup,
+        payload: proposal,
+        emailCount: emails.length,
+        confidence: proposal.confidence,
+        state: "PROPOSED",
+      },
+      update: {
+        proposedName: proposal.name,
+        sourceDomains: [...domains],
+        investmentGroup: proposal.investmentGroup,
+        payload: proposal,
+        confidence: proposal.confidence,
+        state: "PROPOSED",
+      },
     });
+    proposed += 1;
   }
 
   return { scanned: emails.length, domains: groups.length, proposed, skipped, unchanged };

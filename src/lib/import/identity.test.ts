@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { findExistingCompany, normalizeCompanyName, type ExistingCompany } from "./identity";
+import {
+  canonicalCompanyKey,
+  findExistingCompany,
+  normalizeCompanyName,
+  type ExistingCompany,
+} from "./identity";
 
 describe("normalizeCompanyName", () => {
   it("strips punctuation, case and legal suffixes", () => {
@@ -74,5 +79,30 @@ describe("findExistingCompany", () => {
     expect(findExistingCompany({ name: "Bravi", website: "https://bravi.app" }, both)!.company.id).toBe(
       "by-domain",
     );
+  });
+});
+
+describe("canonicalCompanyKey", () => {
+  it("collapses the variants one company is written as", () => {
+    expect(canonicalCompanyKey("Asendia AI")).toBe("asendia");
+    expect(canonicalCompanyKey("Asendia")).toBe("asendia");
+    expect(canonicalCompanyKey("Zaqa AI")).toBe(canonicalCompanyKey("Zaqa"));
+    expect(canonicalCompanyKey("Bravi, Inc.")).toBe("bravi");
+  });
+
+  it("strips the vehicle wrapper a subscription document is issued under", () => {
+    expect(canonicalCompanyKey("Viaka Asendia AI 2026, LLC", { vehicle: "Viaka" })).toBe("asendia");
+    expect(canonicalCompanyKey("Viaka Pintours 2026 LLC", { vehicle: "Viaka" })).toBe("pintours");
+    expect(canonicalCompanyKey("Viaka Marr Labs 2026, LLC", { vehicle: "Viaka" })).toBe("marr labs");
+  });
+
+  it("keeps distinct companies distinct", () => {
+    expect(canonicalCompanyKey("Marr Labs")).not.toBe(canonicalCompanyKey("Marr Health"));
+    expect(canonicalCompanyKey("Vessel")).not.toBe(canonicalCompanyKey("Saile"));
+  });
+
+  it("never strips a name to nothing", () => {
+    expect(canonicalCompanyKey("AI")).toBe("ai");
+    expect(canonicalCompanyKey("Fund")).toBe("fund");
   });
 });
