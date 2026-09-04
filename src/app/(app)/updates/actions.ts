@@ -6,6 +6,8 @@ import { requireUserId } from "@/lib/session";
 import { extractFromUpdate } from "@/lib/extract/update";
 import { applyExtraction, extractPendingUpdates } from "@/lib/extract/apply";
 import { extractPendingDocuments } from "@/lib/extract/apply-document";
+import { fetchPendingLinks } from "@/lib/enrich/links";
+import { enrichCompanyProfiles } from "@/lib/enrich/company";
 import { syncGmail } from "@/lib/gmail/sync";
 import { scanCompanyUpdates } from "@/lib/gmail/refresh";
 
@@ -73,8 +75,13 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
 
   try {
     const sync = await syncGmail(userId);
+    // Linked memos and transcripts are fetched first: extraction reads them
+    // alongside the email body, so a number stated only in a call transcript
+    // still lands as a metric.
+    const links = await fetchPendingLinks(userId);
     const extraction = await extractPendingUpdates(userId, extractFromUpdate);
     const documents = await extractPendingDocuments(userId);
+    await enrichCompanyProfiles(userId);
     revalidatePath("/", "layout");
     return {
       status: "ok",
@@ -82,8 +89,9 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
         `${sync.created} new (${sync.autoMatched} auto-matched, ${sync.pending} awaiting review).`,
         `Extracted ${extraction.extracted} update${extraction.extracted === 1 ? "" : "s"}${extraction.failed ? `, ${extraction.failed} failed` : ""}.`,
         sync.documents > 0 || documents.extracted > 0
-          ? `${sync.documents} document${sync.documents === 1 ? "" : "s"} stored, ${documents.extracted} read, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from them.`
+          ? `${sync.documents} attachment${sync.documents === 1 ? "" : "s"} stored, ${documents.extracted} read, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from them.`
           : null,
+        links.fetched > 0 ? `${links.fetched} linked memo${links.fetched === 1 ? "" : "s"} or transcript${links.fetched === 1 ? "" : "s"} read.` : null,
       ]
         .filter((part) => part !== null)
         .join(" "),
@@ -107,8 +115,10 @@ export async function scanForUpdates(form: FormData): Promise<UpdateActionResult
       return { status: "error", message: "No companies to scan for yet." };
     }
 
+    const links = await fetchPendingLinks(userId, { companyId });
     const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 40 });
     const documents = await extractPendingDocuments(userId);
+    await enrichCompanyProfiles(userId, { companyId });
     revalidatePath("/", "layout");
 
     return {
@@ -116,7 +126,7 @@ export async function scanForUpdates(form: FormData): Promise<UpdateActionResult
       message: [
         `Searched mail from ${scan.companies} compan${scan.companies === 1 ? "y" : "ies"}:`,
         `${scan.created} new update${scan.created === 1 ? "" : "s"} of ${scan.found} matched,`,
-        `${extraction.extracted} extracted${scan.documents ? `, ${scan.documents} document${scan.documents === 1 ? "" : "s"} stored` : ""}${documents.filled ? `, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed` : ""}.`,
+        `${extraction.extracted} extracted${scan.documents ? `, ${scan.documents} attachment${scan.documents === 1 ? "" : "s"} stored` : ""}${links.fetched ? `, ${links.fetched} linked page${links.fetched === 1 ? "" : "s"} read` : ""}${documents.filled ? `, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed` : ""}.`,
       ].join(" "),
     };
   } catch (error) {

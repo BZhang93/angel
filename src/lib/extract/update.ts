@@ -11,13 +11,17 @@ Rules:
 - Signals: RISK is anything that could lose the investor money (runway, churn, litigation, a key departure, a missed plan). ASK is something the founder is asking the investor to do. Severity reflects the money at stake, not the founder's tone.
 - Action items are only things requiring a decision or a deadline from the investor, such as a pro-rata election or a consent form. A general "let me know if you have thoughts" is not an action item.
 - Founders write optimistically. Report the facts, not the framing.
-- Empty arrays are the correct answer for an email that contains nothing of that kind.`;
+- Empty arrays are the correct answer for an email that contains nothing of that kind.
+- Linked documents (an investment memo, a call transcript) count as part of this update: extract from them too, quoting them the same way. A number stated in a transcript is as real as one in the email body.`;
 
 export async function extractFromUpdate(input: {
   companyName?: string | null;
   subject?: string | null;
   receivedAt: Date;
   text: string;
+  /// Memos and call transcripts fetched from links in this email. They carry
+  /// the numbers and risks the covering note only alludes to.
+  linkedText?: string[];
 }): Promise<Extraction> {
   const user = [
     input.companyName ? `Company: ${input.companyName}` : null,
@@ -26,6 +30,9 @@ export async function extractFromUpdate(input: {
     "",
     "Email body:",
     input.text,
+    ...(input.linkedText?.length
+      ? ["", "Linked documents fetched from this email:", ...input.linkedText]
+      : []),
   ]
     .filter((line) => line !== null)
     .join("\n");

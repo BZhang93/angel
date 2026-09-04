@@ -342,8 +342,9 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       <Card title="Documents">
         {documentLinks.length === 0 ? (
           <p className="py-2 text-sm text-muted">
-            No documents yet. Signed SAFEs, side letters and tax forms arrive automatically as
-            email attachments.
+            No documents yet. Signed SAFEs, side letters and tax forms arrive as email
+            attachments; investment memos and call recordings are fetched from links in those
+            emails.
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -351,7 +352,16 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
               <li key={document.id} className="flex items-start justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    {document.href ? (
+                    {document.sourceUrl ? (
+                      <a
+                        href={document.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="truncate text-sm font-medium hover:underline"
+                      >
+                        {document.title}
+                      </a>
+                    ) : document.href ? (
                       <a
                         href={document.href}
                         target="_blank"
@@ -364,7 +374,8 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                       <span className="truncate text-sm font-medium">{document.title}</span>
                     )}
                     <Pill>{titleCase(document.kind)}</Pill>
-                    {!document.storagePath && <Pill>not downloaded</Pill>}
+                    {!document.storagePath && !document.sourceUrl && <Pill>not downloaded</Pill>}
+                    {document.sourceUrl && <Pill>from a link</Pill>}
                   </div>
                   {document.summary && (
                     <p className="mt-0.5 text-sm text-muted">{document.summary}</p>

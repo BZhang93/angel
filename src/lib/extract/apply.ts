@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { linkedTextForUpdate } from "@/lib/enrich/links";
 import type { Extraction } from "./schema";
 
 // Writing an extraction back to the database.
@@ -79,6 +80,7 @@ export async function extractPendingUpdates(
     subject?: string | null;
     receivedAt: Date;
     text: string;
+    linkedText?: string[];
   }) => Promise<Extraction>,
   opts: { limit?: number } = {},
 ): Promise<{ extracted: number; failed: number }> {
@@ -99,6 +101,7 @@ export async function extractPendingUpdates(
         subject: update.subject,
         receivedAt: update.receivedAt,
         text: update.rawText,
+        linkedText: await linkedTextForUpdate(update.id),
       });
       await applyExtraction(userId, update.id, update.companyId!, result);
       extracted += 1;

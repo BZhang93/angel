@@ -169,6 +169,11 @@ enum DocumentKind {
   CAP_TABLE
   K1
   TAX_OTHER
+  /// Fetched from a link rather than attached: an investment memo, a call
+  /// recording page with its transcript, or the company's own site.
+  MEMO
+  RECORDING
+  WEBSITE
   OTHER
 }
 
@@ -492,9 +497,17 @@ model Document {
   /// signed SAFE exists.
   storagePath String?
 
-  // -- Gmail provenance ------------------------------------------------------
+  // -- Provenance ------------------------------------------------------------
   gmailMessageId    String?
   gmailAttachmentId String?
+  /// Set when the document came from a link in an email rather than an
+  /// attachment. Unique per user, so a memo linked from five updates is fetched
+  /// once.
+  sourceUrl         String?
+  /// Readable text of a fetched page: the memo, or the call transcript. Held so
+  /// extraction can re-run without fetching the page again.
+  textContent       String?
+  fetchedAt         DateTime?
 
   // -- Extraction ------------------------------------------------------------
   /// Set once the document itself has been read for terms.
@@ -507,6 +520,8 @@ model Document {
 
   /// Dedupes re-ingesting the same attachment across syncs.
   @@unique([userId, gmailMessageId, gmailAttachmentId])
+  /// Dedupes a link that appears in several emails.
+  @@unique([userId, sourceUrl])
   @@index([userId])
   @@index([companyId])
   @@index([updateId])
