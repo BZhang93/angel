@@ -1,9 +1,10 @@
-import { Card, EmptyState, Pill } from "@/components/ui";
+import { Card, ControlRow, EmptyState, Pill } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { shortDate } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
 import { ReviewRow } from "./review-row";
 import { ScanUpdatesButton } from "./scan-updates-button";
+import { RematchButton } from "./rematch-button";
 
 export default async function UpdatesPage() {
   const userId = await requireUserId();
@@ -34,11 +35,15 @@ export default async function UpdatesPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="text-lg font-semibold">Review Queue</h1>
-        <ScanUpdatesButton />
+        <ControlRow>
+          <RematchButton />
+          <ScanUpdatesButton />
+        </ControlRow>
       </div>
       <p className="text-sm text-muted">
         {pending.length} update{pending.length === 1 ? "" : "s"} could not be matched confidently.
-        Assigning one extracts it immediately.
+        Assigning one extracts it immediately. If these arrived before your companies existed,
+        Re-match Queue files them automatically.
       </p>
 
       <div className="space-y-3">

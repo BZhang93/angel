@@ -27,7 +27,24 @@ export const DocumentTermsSchema = z.object({
   isExecuted: z
     .boolean()
     .describe("True only if the document is signed or countersigned, not a draft or template."),
-  amount: z.number().nullable().describe("The purchase amount, in dollars."),
+  amount: z.number().nullable().describe("The purchase or subscription amount, in dollars."),
+  /// Kept apart from the purchase price: a fee buys no ownership, and folding
+  /// it into the amount would inflate the cost basis and flatter the return.
+  feesAmount: z
+    .number()
+    .nullable()
+    .describe("Administrative, legal or setup fees charged on top of the purchase amount."),
+  instrumentType: z
+    .enum(["SAFE", "CONVERTIBLE_NOTE", "PRICED_EQUITY", "SPV_LP", "TOKEN_WARRANT", "OTHER"])
+    .describe(
+      "What the investor holds under THIS document. A subscription agreement for an SPV or LLC that in turn holds a SAFE is SPV_LP, not SAFE.",
+    ),
+  investmentGroup: z
+    .string()
+    .nullable()
+    .describe(
+      "The syndicate, SPV or fund vehicle named in the document, e.g. 'Viaka'. Null for a direct investment.",
+    ),
   investmentDate: z.string().nullable().describe("Execution or effective date, ISO YYYY-MM-DD."),
   valuationCap: z.number().nullable(),
   discountPct: z.number().nullable(),
@@ -54,6 +71,8 @@ Extract only what the document states.
 - isExecuted is true only for a signed or countersigned document. An unsigned template or draft is false.
 - Post-money versus pre-money is stated in the SAFE's title or definitions; do not guess it from the year.
 - If the document is not an investment document at all (a newsletter PDF, a deck), set documentKind OTHER, leave the terms null, and say what it is in summary.
+- A subscription agreement, LLC operating agreement or side-by-side pair of them is an investment document: set documentKind EQUITY_DOCS, instrumentType SPV_LP, and record the purchase price as amount with any administrative fee in feesAmount. Do not report the fee as part of the amount.
+- Where an SPV holds an instrument in an operating company, companyName is the OPERATING company and investmentGroup is the vehicle's manager.
 - When typed field values are supplied, they were entered into the document rather than read off it: prefer them over the rendered text wherever the two disagree, and quote the field as "Field: <name> = <value>" in sourceQuotes.`;
 
 let client: Anthropic | undefined;

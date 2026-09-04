@@ -16,6 +16,7 @@ import { requireUserId } from "@/lib/session";
 import { signedUrl } from "@/lib/storage";
 import { ScanUpdatesButton } from "../../updates/scan-updates-button";
 import { UploadDocument } from "./upload-document";
+import { DocumentActions } from "./document-actions";
 import { addYears } from "@/lib/signals";
 import {
   addActionItem,
@@ -418,9 +419,12 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                     <p className="mt-0.5 text-sm text-muted">{document.summary}</p>
                   )}
                 </div>
-                <span className="tabular shrink-0 text-xs text-muted">
-                  {document.sizeBytes ? `${Math.round(document.sizeBytes / 1024)} KB` : ""}
-                </span>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="tabular text-xs text-muted">
+                    {document.sizeBytes ? `${Math.round(document.sizeBytes / 1024)} KB` : ""}
+                  </span>
+                  <DocumentActions id={document.id} canReread={!!document.storagePath} />
+                </div>
               </li>
             ))}
           </ul>

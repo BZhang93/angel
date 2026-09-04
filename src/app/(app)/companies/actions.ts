@@ -7,7 +7,8 @@ import { requireUserId } from "@/lib/session";
 import { attachmentPath, uploadAttachment } from "@/lib/storage";
 import { guessDocumentKind } from "@/lib/gmail/parse";
 import { extractDocumentTerms } from "@/lib/extract/document";
-import { chooseTargetPosition, gapsOnly, parseIsoDate } from "@/lib/extract/fill";
+import { applyTermsToPortfolio } from "@/lib/extract/apply-document";
+import { downloadAttachment, deleteAttachment } from "@/lib/storage";
 import { randomUUID } from "node:crypto";
 import type { DocumentKind } from "@/generated/prisma/enums";
 import type {
@@ -319,44 +320,9 @@ export async function uploadDocument(form: FormData): Promise<ActionResult> {
       data: { kind: terms.documentKind, summary: terms.summary, extractedAt: new Date() },
     });
 
-    if (terms.isExecuted) {
-      const positions = await prisma.position.findMany({
-        where: { companyId, userId },
-        select: {
-          id: true,
-          investmentDate: true,
-          valuationCap: true,
-          discountPct: true,
-          safeIsPostMoney: true,
-          interestRatePct: true,
-          maturityDate: true,
-          shareClass: true,
-          shareCount: true,
-          pricePerShare: true,
-        },
-      });
-
-      const target = chooseTargetPosition(positions, terms);
-      if (target) {
-        const patch = gapsOnly(target, {
-          valuationCap: terms.valuationCap,
-          discountPct: terms.discountPct,
-          safeIsPostMoney: terms.safeIsPostMoney,
-          interestRatePct: terms.interestRatePct,
-          maturityDate: parseIsoDate(terms.maturityDate),
-          shareClass: terms.shareClass,
-          shareCount: terms.shareCount,
-          pricePerShare: terms.pricePerShare,
-        });
-        if (Object.keys(patch).length > 0) {
-          await prisma.position.update({ where: { id: target.id }, data: patch });
-        }
-        await prisma.document.update({
-          where: { id: document.id },
-          data: { positionId: target.id },
-        });
-      }
-    }
+    // The same rules as every other document source: fill gaps, never
+    // overwrite, and record the amount when nothing else has.
+    await applyTermsToPortfolio(userId, companyId, document.id, terms);
   } catch (error) {
     // The file is stored either way; extraction retries on the next sync.
     revalidatePath(`/companies/${companyId}`);
@@ -367,4 +333,70 @@ export async function uploadDocument(form: FormData): Promise<ActionResult> {
   }
 
   revalidatePath(`/companies/${companyId}`);
+}
+
+/// Removes an uploaded document and its stored file.
+///
+/// Anything the document already contributed stays: a position created or an
+/// amount recorded from it is portfolio data now, not a property of the file.
+/// Deleting a PDF should not silently rewrite the books.
+export async function deleteDocument(form: FormData): Promise<ActionResult> {
+  const userId = await requireUserId();
+  const id = str(form, "id");
+
+  const document = await prisma.document.findFirst({ where: { id, userId } });
+  if (!document) return { status: "error", message: "Document not found." };
+
+  if (document.storagePath) {
+    try {
+      await deleteAttachment(document.storagePath);
+    } catch {
+      // A missing object should not block removing the record.
+    }
+  }
+
+  await prisma.document.delete({ where: { id: document.id } });
+  revalidatePath(`/companies/${document.companyId ?? ""}`);
+  revalidatePath("/", "layout");
+}
+
+/// Reads a stored document again, for one that was filed before the extractor
+/// knew how to use what it found.
+export async function rereadDocument(form: FormData): Promise<ActionResult> {
+  const userId = await requireUserId();
+  const id = str(form, "id");
+
+  const document = await prisma.document.findFirst({
+    where: { id, userId },
+    include: { company: { select: { id: true, name: true } } },
+  });
+  if (!document) return { status: "error", message: "Document not found." };
+  if (!document.storagePath) return { status: "error", message: "This document has no stored file." };
+
+  try {
+    const bytes = await downloadAttachment(document.storagePath);
+    const terms = await extractDocumentTerms(bytes, {
+      filename: document.title,
+      companyName: document.company?.name,
+      formFields: Array.isArray(document.formFields)
+        ? (document.formFields as { name: string; value: string }[])
+        : undefined,
+    });
+
+    await prisma.document.update({
+      where: { id: document.id },
+      data: { kind: terms.documentKind, summary: terms.summary, extractedAt: new Date() },
+    });
+
+    if (document.companyId) {
+      await applyTermsToPortfolio(userId, document.companyId, document.id, terms);
+    }
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Could not read the document.",
+    };
+  }
+
+  revalidatePath("/", "layout");
 }

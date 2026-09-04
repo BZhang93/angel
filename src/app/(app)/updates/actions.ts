@@ -10,6 +10,7 @@ import { fetchPendingLinks } from "@/lib/enrich/links";
 import { enrichCompanyProfiles } from "@/lib/enrich/company";
 import { syncDocusign } from "@/lib/docusign/sync";
 import { syncGmail } from "@/lib/gmail/sync";
+import { rematchPendingUpdates } from "@/lib/gmail/rematch";
 import { scanCompanyUpdates } from "@/lib/gmail/refresh";
 
 export type UpdateActionResult = { status: "error"; message: string } | { status: "ok"; message: string } | void;
@@ -79,6 +80,9 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
 
   try {
     const sync = await syncGmail(userId);
+    // Mail synced before a company existed matched nothing and is still
+    // pending; reconsider it now that the portfolio has more in it.
+    const rematch = await rematchPendingUpdates(userId);
     // Linked memos and transcripts are fetched first: extraction reads them
     // alongside the email body, so a number stated only in a call transcript
     // still lands as a metric.
@@ -90,7 +94,10 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
     return {
       status: "ok",
       message: [
-        `${sync.created} new (${sync.autoMatched} auto-matched, ${sync.pending} awaiting review).`,
+        `${sync.created} new (${sync.autoMatched} auto-matched, ${rematch.stillPending} awaiting review).`,
+        rematch.matched > 0
+          ? `${rematch.matched} previously unmatched email${rematch.matched === 1 ? "" : "s"} filed.`
+          : null,
         `Extracted ${extraction.extracted} update${extraction.extracted === 1 ? "" : "s"}${extraction.failed ? `, ${extraction.failed} failed` : ""}.`,
         sync.documents > 0 || documents.extracted > 0
           ? `${sync.documents} attachment${sync.documents === 1 ? "" : "s"} stored, ${documents.extracted} read, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from them.`
@@ -115,6 +122,7 @@ export async function scanForUpdates(form: FormData): Promise<UpdateActionResult
 
   try {
     const scan = await scanCompanyUpdates(userId, { companyId });
+    const rematch = await rematchPendingUpdates(userId);
     if (scan.companies === 0) {
       return { status: "error", message: "No companies to scan for yet." };
     }
@@ -129,7 +137,7 @@ export async function scanForUpdates(form: FormData): Promise<UpdateActionResult
       status: "ok",
       message: [
         `Searched mail from ${scan.companies} compan${scan.companies === 1 ? "y" : "ies"}:`,
-        `${scan.created} new update${scan.created === 1 ? "" : "s"} of ${scan.found} matched,`,
+        `${scan.created} new update${scan.created === 1 ? "" : "s"} of ${scan.found} matched${rematch.matched ? `, ${rematch.matched} previously unmatched filed` : ""},`,
         `${extraction.extracted} extracted${scan.documents ? `, ${scan.documents} attachment${scan.documents === 1 ? "" : "s"} stored` : ""}${links.fetched ? `, ${links.fetched} linked page${links.fetched === 1 ? "" : "s"} read` : ""}${documents.filled ? `, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed` : ""}.`,
       ].join(" "),
     };
@@ -158,5 +166,34 @@ export async function runDocusignSync(): Promise<UpdateActionResult> {
       status: "error",
       message: error instanceof Error ? error.message : "DocuSign sync failed.",
     };
+  }
+}
+
+/// Reconsiders everything in the review queue against the current portfolio,
+/// then extracts what it manages to file. The button to press after importing
+/// companies, when mail synced earlier had nothing to match against.
+export async function rematchQueue(): Promise<UpdateActionResult> {
+  const userId = await requireUserId();
+
+  try {
+    const rematch = await rematchPendingUpdates(userId);
+    if (rematch.matched === 0) {
+      return {
+        status: "ok",
+        message: `Nothing new could be matched. ${rematch.stillPending} update${rematch.stillPending === 1 ? "" : "s"} still need a company chosen by hand.`,
+      };
+    }
+
+    await fetchPendingLinks(userId);
+    const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 80 });
+    const documents = await extractPendingDocuments(userId);
+    revalidatePath("/", "layout");
+
+    return {
+      status: "ok",
+      message: `Filed ${rematch.matched} of ${rematch.considered} pending emails and extracted ${extraction.extracted}. ${rematch.stillPending} still need a company chosen by hand.${documents.filled ? ` ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from documents.` : ""}`,
+    };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Re-match failed." };
   }
 }

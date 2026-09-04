@@ -59,6 +59,12 @@ export async function downloadAttachment(path: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer());
 }
 
+export async function deleteAttachment(path: string): Promise<void> {
+  const storage = await storageClient();
+  const { error } = await storage.from(ATTACHMENTS_BUCKET).remove([path]);
+  if (error) throw new Error(`Storage delete failed: ${error.message}`);
+}
+
 export async function signedUrl(path: string): Promise<string | null> {
   const storage = await storageClient();
   const { data, error } = await storage
