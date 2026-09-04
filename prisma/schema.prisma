@@ -386,6 +386,9 @@ model DocusignAccount {
   /// The DocuSign account the envelopes belong to.
   accountId             String
   accountName           String?
+  /// The signer's own DocuSign user id, used to find envelopes they signed
+  /// rather than sent.
+  docusignUserId        String?
   /// Account-specific API base, returned by userinfo. Hardcoding the regional
   /// host is the classic way this integration breaks.
   baseUri               String

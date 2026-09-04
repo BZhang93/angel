@@ -48,7 +48,11 @@ export async function syncDocusign(
   if (!account) throw new Error("Connect DocuSign first.");
 
   const accessToken = await accessTokenFromRefresh(decryptSecret(account.refreshTokenEncrypted));
-  const identity = { baseUri: account.baseUri, accountId: account.accountId };
+  const identity = {
+    baseUri: account.baseUri,
+    accountId: account.accountId,
+    userId: account.docusignUserId,
+  };
 
   // Re-reading from a little before the last sync is cheap insurance: envelopes
   // complete out of order, and a missed one is invisible.

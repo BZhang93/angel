@@ -33,12 +33,14 @@ export async function GET(request: Request) {
         accountId: identity.accountId,
         accountName: identity.accountName,
         baseUri: identity.baseUri,
+        docusignUserId: identity.userId || null,
         refreshTokenEncrypted: encryptSecret(refreshToken),
       },
       update: {
         accountId: identity.accountId,
         accountName: identity.accountName,
         baseUri: identity.baseUri,
+        docusignUserId: identity.userId || null,
         refreshTokenEncrypted: encryptSecret(refreshToken),
       },
     });

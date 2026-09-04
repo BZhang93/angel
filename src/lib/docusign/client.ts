@@ -95,6 +95,10 @@ export interface DocusignIdentity {
   accountId: string;
   accountName: string;
   baseUri: string;
+  /// The authenticated user's own id. Needed to find envelopes where they were
+  /// a signer rather than the sender, which is the normal case for an angel:
+  /// the syndicate sends, you sign.
+  userId: string;
 }
 
 /// The default account and, crucially, its API base URI.
@@ -105,6 +109,7 @@ export async function getIdentity(accessToken: string): Promise<DocusignIdentity
   if (!response.ok) throw new Error(`DocuSign userinfo failed (${response.status}).`);
 
   const data = (await response.json()) as {
+    sub?: string;
     accounts?: { account_id: string; account_name: string; base_uri: string; is_default: boolean }[];
   };
   const account = data.accounts?.find((entry) => entry.is_default) ?? data.accounts?.[0];
@@ -114,6 +119,7 @@ export async function getIdentity(accessToken: string): Promise<DocusignIdentity
     accountId: account.account_id,
     accountName: account.account_name,
     baseUri: account.base_uri,
+    userId: data.sub ?? "",
   };
 }
 
@@ -145,7 +151,7 @@ export interface DocusignEnvelope {
 /// never agreed, and must not be allowed near a position.
 export async function listCompletedEnvelopes(
   accessToken: string,
-  identity: { baseUri: string; accountId: string },
+  identity: { baseUri: string; accountId: string; userId?: string | null },
   opts: { fromDate: Date },
 ): Promise<DocusignEnvelope[]> {
   const params = new URLSearchParams({
@@ -155,6 +161,10 @@ export async function listCompletedEnvelopes(
     order_by: "completed",
     count: "100",
   });
+  // Without user_id the search covers envelopes the account SENT. An angel is
+  // almost always the signer, not the sender, so this is what makes the pull
+  // return anything at all.
+  if (identity.userId) params.set("user_id", identity.userId);
 
   const data = await apiGet<{ envelopes?: DocusignEnvelope[] }>(
     accessToken,
