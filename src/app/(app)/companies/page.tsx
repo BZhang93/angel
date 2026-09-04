@@ -40,7 +40,12 @@ export default async function CompaniesPage() {
             <tr>
               <th className="px-4 py-2 font-medium">Company</th>
               <th className="px-4 py-2 font-medium">Instruments</th>
-              <th className="px-4 py-2 text-right font-medium">Deployed</th>
+              <th
+                className="cursor-help px-4 py-2 text-right font-medium"
+                title="Total cash out, fees included. A fee bought no ownership, so hiding it would flatter the return."
+              >
+                Deployed
+              </th>
               <th className="px-4 py-2 text-right font-medium">Value</th>
               <th className="px-4 py-2 text-right font-medium">MOIC</th>
               <th className="px-4 py-2 text-right font-medium">IRR</th>
@@ -78,7 +83,21 @@ export default async function CompaniesPage() {
                   </td>
                 ) : (
                   <>
-                    <td className="tabular px-4 py-2 text-right">{money(company.deployed)}</td>
+                        <td
+                      className="tabular px-4 py-2 text-right"
+                      title={
+                        company.fees > 0
+                          ? `${money(company.invested)} invested plus ${money(company.fees)} of fees`
+                          : undefined
+                      }
+                    >
+                      {money(company.deployed)}
+                      {company.fees > 0 && (
+                        <span className="block text-xs font-normal text-muted">
+                          incl. {money(company.fees)} fees
+                        </span>
+                      )}
+                    </td>
                     <td className="tabular px-4 py-2 text-right">
                       {money(company.realized + company.unrealized)}
                     </td>

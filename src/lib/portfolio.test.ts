@@ -36,6 +36,11 @@ describe("unrealizedValue", () => {
     expect(unrealizedValue(safe, {})).toBe(25000);
   });
 
+  it("carries fees as part of cost, since they were paid", () => {
+    const withFees: Cashflow[] = [...safe, { kind: "FEE", amount: 2500, date: d("2022-03-01") }];
+    expect(unrealizedValue(withFees, {})).toBe(27500);
+  });
+
   it("marks priced equity to shares times latest price", () => {
     expect(unrealizedValue(safe, { shareCount: 10000, latestPricePerShare: 4.25 })).toBe(42500);
   });
@@ -78,13 +83,24 @@ describe("moic", () => {
     expect(moic(flows, { shareCount: 12000, latestPricePerShare: 5 })).toBe(2.8);
   });
 
-  it("drags on fees, which is the point of counting them", () => {
+  it("reads 1.00x at inception, fees and all", () => {
+    // A position created today has neither gained nor lost. Carrying at the
+    // fee-free basis against gross deployed used to report 0.91x on day one.
     const flows: Cashflow[] = [
       { kind: "INVESTMENT", amount: 10000, date: d("2022-03-01") },
       { kind: "FEE", amount: 1000, date: d("2022-03-01") },
     ];
-    // Carried at cost (10k basis) against 11k deployed.
-    expect(moic(flows, {})).toBe(0.9091);
+    expect(moic(flows, {})).toBe(1);
+  });
+
+  it("still shows the drag once a real mark exists", () => {
+    // Fees bought no ownership: once the position is marked at what the shares
+    // are worth, the fee reduces the multiple.
+    const flows: Cashflow[] = [
+      { kind: "INVESTMENT", amount: 10000, date: d("2022-03-01") },
+      { kind: "FEE", amount: 1000, date: d("2022-03-01") },
+    ];
+    expect(moic(flows, { shareCount: 10000, latestPricePerShare: 1 })).toBe(0.9091);
   });
 });
 

@@ -73,8 +73,12 @@ export function unrealizedValue(flows: Cashflow[], mark: MarkInputs): number {
     return round2(shareCount * latestPricePerShare);
   }
 
-  // Carried at cost, net of anything already sold out of the position.
-  return round2(Math.max(costBasis(flows) - totalRealized(flows), 0));
+  // Carried at cost, and cost means what was actually paid: the investment plus
+  // the fees that came with it. Carrying at the fee-free basis while deploying
+  // the gross made every position read 0.91x with a deeply negative IRR from
+  // the day it was created, which describes the accounting rather than the
+  // company.
+  return round2(Math.max(totalDeployed(flows) - totalRealized(flows), 0));
 }
 
 /// Multiple on invested capital: everything back plus everything still held,

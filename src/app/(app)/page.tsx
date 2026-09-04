@@ -62,7 +62,15 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Deployed" value={money(totals.deployed)} sub={`${totals.companyCount} companies`} />
+        <Stat
+          label="Deployed"
+          value={money(totals.deployed)}
+          sub={
+            totals.fees > 0
+              ? `${totals.companyCount} companies · includes ${money(totals.fees)} fees`
+              : `${totals.companyCount} companies`
+          }
+        />
         <Stat label="Current value" value={money(totals.totalValue)} sub={`${money(totals.realized)} realized`} />
         <Stat
           label="MOIC"

@@ -113,9 +113,10 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
       )}
 
       {summary && summary.positionCount > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           {[
             { label: "Deployed", value: money(summary.deployed) },
+            { label: "Fees", value: money(summary.fees) },
             { label: "Realized", value: money(summary.realized) },
             { label: "Unrealized", value: money(summary.unrealized) },
             { label: "MOIC", value: multiple(summary.moic) },

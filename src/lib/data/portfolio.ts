@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import {
+  costBasis,
   irr,
   moic,
   totalDeployed,
@@ -14,6 +15,10 @@ import { deriveCompanySignals, type DerivedSignal } from "@/lib/signals";
 // Read models for the UI. This layer does the Prisma work and hands plain
 // numbers to the pure functions in portfolio.ts / signals.ts, so the maths stays
 // testable and the components stay dumb.
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
 
 function toNumber(value: unknown): number {
   // Prisma Decimal has toNumber(); nulls come back as null.
@@ -34,7 +39,12 @@ export interface CompanySummary {
   sector: string | null;
   status: string;
   stage: string;
+  /// Total cash out, fees included: what actually left the account.
   deployed: number;
+  /// The part of it that bought ownership.
+  invested: number;
+  /// The part that did not.
+  fees: number;
   realized: number;
   unrealized: number;
   moic: number | null;
@@ -111,6 +121,8 @@ export async function getCompanySummaries(
       status: company.status,
       stage: company.stage,
       deployed: totalDeployed(flows),
+      invested: costBasis(flows),
+      fees: round2(totalDeployed(flows) - costBasis(flows)),
       realized: totalRealized(flows),
       unrealized,
       moic: moic(flows, mark),
@@ -150,7 +162,12 @@ export async function getCompanySummaries(
 }
 
 export interface PortfolioTotals {
+  /// Total cash out, fees included: what actually left the account.
   deployed: number;
+  /// The part of it that bought ownership.
+  invested: number;
+  /// The part that did not.
+  fees: number;
   realized: number;
   unrealized: number;
   totalValue: number;
@@ -163,11 +180,15 @@ export interface PortfolioTotals {
 
 export function rollUp(summaries: CompanySummary[]): PortfolioTotals {
   const deployed = summaries.reduce((total, c) => total + c.deployed, 0);
+  const fees = summaries.reduce((total, c) => total + c.fees, 0);
+  const invested = summaries.reduce((total, c) => total + c.invested, 0);
   const realized = summaries.reduce((total, c) => total + c.realized, 0);
   const unrealized = summaries.reduce((total, c) => total + c.unrealized, 0);
 
   return {
     deployed,
+    invested,
+    fees,
     realized,
     unrealized,
     totalValue: realized + unrealized,
