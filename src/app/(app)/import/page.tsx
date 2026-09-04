@@ -14,7 +14,7 @@ import { ScanProgress } from "./scan-progress";
 export default async function ImportPage() {
   const userId = await requireUserId();
 
-  const [account, candidates, importedCount, run] = await Promise.all([
+  const [account, candidates, importedCount, run, companyCount, pendingUpdates] = await Promise.all([
     prisma.gmailAccount.findUnique({ where: { userId } }),
     prisma.importCandidate.findMany({
       where: { userId, state: "PROPOSED" },
@@ -22,6 +22,8 @@ export default async function ImportPage() {
     }),
     prisma.importCandidate.count({ where: { userId, state: "IMPORTED" } }),
     latestRun(userId, "IMPORT_SCAN"),
+    prisma.company.count({ where: { userId } }),
+    prisma.update.count({ where: { userId, reviewState: "PENDING" } }),
   ]);
   const running = run?.state === "RUNNING";
 
@@ -53,6 +55,13 @@ export default async function ImportPage() {
           Groups your labelled mail by sender company, keeps only the senders that show real
           evidence of an investment, and proposes each one with whatever terms the emails state.
           Nothing enters the portfolio until you accept it.
+        </p>
+        <p className="mt-2 text-sm text-muted">
+          {companyCount === 0
+            ? "You have no companies yet, so every proposal here creates one."
+            : `You already have ${companyCount} compan${companyCount === 1 ? "y" : "ies"}, so a proposal that matches one is offered as a merge rather than a second entry.`}{" "}
+          Accepting a proposal also files the emails behind it against that company and reads
+          them{pendingUpdates > 0 ? `, which is what ${pendingUpdates} unmatched email${pendingUpdates === 1 ? " is" : "s are"} waiting for` : ""}.
         </p>
       </div>
 

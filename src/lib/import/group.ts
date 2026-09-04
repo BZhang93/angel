@@ -6,6 +6,7 @@ import { NON_COMPANY_DOMAINS as BLOCKED } from "./domains";
 
 export interface ScannedEmail {
   gmailMessageId: string;
+  gmailThreadId: string | null;
   fromAddress: string;
   fromName: string | null;
   subject: string | null;

@@ -105,6 +105,39 @@ export async function scanForCompanies(
     throw new Error(`Could not read any of the ${unreadable} messages Gmail returned.`);
   }
 
+  // Keep what was read. Without this an import produces companies with no
+  // history: the scan read every email and discarded it, so the amounts stayed
+  // in the mailbox. They are stored unmatched here and filed the moment their
+  // company is accepted. Attachments are left to the next sync, which keeps the
+  // scan fast.
+  await updateRun(runId, { step: "Storing what it read" });
+  const alreadyStored = new Set(
+    (
+      await prisma.update.findMany({
+        where: { userId, gmailMessageId: { in: emails.map((email) => email.gmailMessageId) } },
+        select: { gmailMessageId: true },
+      })
+    ).map((row) => row.gmailMessageId),
+  );
+
+  for (const email of emails) {
+    if (alreadyStored.has(email.gmailMessageId)) continue;
+    await prisma.update.create({
+      data: {
+        userId,
+        gmailMessageId: email.gmailMessageId,
+        gmailThreadId: email.gmailThreadId,
+        receivedAt: email.receivedAt,
+        fromAddress: email.fromAddress,
+        fromName: email.fromName,
+        subject: email.subject,
+        rawText: email.text,
+        links: email.links,
+        reviewState: "PENDING",
+      },
+    });
+  }
+
   // Domains already represented in the portfolio, so a rescan proposes only
   // what is genuinely new.
   const [companies, dismissed] = await Promise.all([

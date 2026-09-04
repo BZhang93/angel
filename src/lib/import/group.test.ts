@@ -10,6 +10,7 @@ import {
 
 const email = (over: Partial<ScannedEmail> & { fromAddress: string }): ScannedEmail => ({
   gmailMessageId: Math.random().toString(36).slice(2),
+  gmailThreadId: null,
   fromName: null,
   subject: null,
   receivedAt: new Date("2026-01-01T00:00:00.000Z"),
