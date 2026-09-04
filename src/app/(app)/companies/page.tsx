@@ -3,6 +3,7 @@ import { EmptyState, Pill, SeverityBadge } from "@/components/ui";
 import { getCompanySummaries } from "@/lib/data/portfolio";
 import { money, multiple, percent, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
+import { ScanUpdatesButton } from "../updates/scan-updates-button";
 
 export default async function CompaniesPage() {
   const userId = await requireUserId();
@@ -20,14 +21,17 @@ export default async function CompaniesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="text-lg font-semibold">Companies</h1>
-        <Link
-          href="/companies/new"
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Add Company
-        </Link>
+        <div className="flex items-start gap-2">
+          <ScanUpdatesButton />
+          <Link
+            href="/companies/new"
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"
+          >
+            Add Company
+          </Link>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-surface">

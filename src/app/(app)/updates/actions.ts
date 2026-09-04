@@ -7,6 +7,7 @@ import { extractFromUpdate } from "@/lib/extract/update";
 import { applyExtraction, extractPendingUpdates } from "@/lib/extract/apply";
 import { extractPendingDocuments } from "@/lib/extract/apply-document";
 import { syncGmail } from "@/lib/gmail/sync";
+import { scanCompanyUpdates } from "@/lib/gmail/refresh";
 
 export type UpdateActionResult = { status: "error"; message: string } | { status: "ok"; message: string } | void;
 
@@ -92,3 +93,33 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
   }
 }
 
+
+/// Searches by sender rather than by label, so an update from a portfolio
+/// company that was never filed under the sync label is still found. Optionally
+/// scoped to one company.
+export async function scanForUpdates(form: FormData): Promise<UpdateActionResult> {
+  const userId = await requireUserId();
+  const companyId = String(form.get("companyId") ?? "").trim() || undefined;
+
+  try {
+    const scan = await scanCompanyUpdates(userId, { companyId });
+    if (scan.companies === 0) {
+      return { status: "error", message: "No companies to scan for yet." };
+    }
+
+    const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 40 });
+    const documents = await extractPendingDocuments(userId);
+    revalidatePath("/", "layout");
+
+    return {
+      status: "ok",
+      message: [
+        `Searched mail from ${scan.companies} compan${scan.companies === 1 ? "y" : "ies"}:`,
+        `${scan.created} new update${scan.created === 1 ? "" : "s"} of ${scan.found} matched,`,
+        `${extraction.extracted} extracted${scan.documents ? `, ${scan.documents} document${scan.documents === 1 ? "" : "s"} stored` : ""}${documents.filled ? `, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed` : ""}.`,
+      ].join(" "),
+    };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Scan failed." };
+  }
+}

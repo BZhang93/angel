@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { shortDate } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
 import { ReviewRow } from "./review-row";
+import { ScanUpdatesButton } from "./scan-updates-button";
 
 export default async function UpdatesPage() {
   const userId = await requireUserId();
@@ -31,7 +32,10 @@ export default async function UpdatesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Review Queue</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-lg font-semibold">Review Queue</h1>
+        <ScanUpdatesButton />
+      </div>
       <p className="text-sm text-muted">
         {pending.length} update{pending.length === 1 ? "" : "s"} could not be matched confidently.
         Assigning one extracts it immediately.

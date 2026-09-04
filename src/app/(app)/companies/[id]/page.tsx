@@ -14,6 +14,7 @@ import { getCompanyDetail, getCompanySummaries } from "@/lib/data/portfolio";
 import { money, multiple, percent, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
 import { signedUrl } from "@/lib/storage";
+import { ScanUpdatesButton } from "../../updates/scan-updates-button";
 import { addYears } from "@/lib/signals";
 import {
   addActionItem,
@@ -69,6 +70,8 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
             {company.sector && <Pill>{company.sector}</Pill>}
           </div>
         </div>
+        <div className="flex flex-wrap items-start gap-3">
+        <ScanUpdatesButton companyId={company.id} />
         <form action={updateCompanyStatus} className="flex items-end gap-2">
           <input type="hidden" name="id" value={company.id} />
           <label className="text-sm">
@@ -89,6 +92,7 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
             Update
           </button>
         </form>
+        </div>
       </div>
 
       {summary && (
