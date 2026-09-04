@@ -378,6 +378,25 @@ model GmailAccount {
   updatedAt DateTime @updatedAt
 }
 
+/// The connected DocuSign account. Same shape as GmailAccount: the refresh
+/// token is encrypted at rest and never leaves the server.
+model DocusignAccount {
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  /// The DocuSign account the envelopes belong to.
+  accountId             String
+  accountName           String?
+  /// Account-specific API base, returned by userinfo. Hardcoding the regional
+  /// host is the classic way this integration breaks.
+  baseUri               String
+  refreshTokenEncrypted String
+  /// Envelopes completed before this are not re-read.
+  lastSyncedAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 /// One ingested investor-update email.
 model Update {
   id              String      @id @default(uuid())
@@ -515,6 +534,9 @@ model Document {
   // -- Provenance ------------------------------------------------------------
   gmailMessageId    String?
   gmailAttachmentId String?
+  /// Set when the document came from DocuSign rather than an email. Signed
+  /// envelopes are the authoritative copy of an instrument's terms.
+  docusignEnvelopeId String?
   /// Set when the document came from a link in an email rather than an
   /// attachment. Unique per user, so a memo linked from five updates is fetched
   /// once.
@@ -537,6 +559,8 @@ model Document {
   @@unique([userId, gmailMessageId, gmailAttachmentId])
   /// Dedupes a link that appears in several emails.
   @@unique([userId, sourceUrl])
+  /// One document per envelope.
+  @@unique([userId, docusignEnvelopeId])
   @@index([userId])
   @@index([companyId])
   @@index([updateId])

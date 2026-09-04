@@ -8,6 +8,7 @@ import { applyExtraction, extractPendingUpdates } from "@/lib/extract/apply";
 import { extractPendingDocuments } from "@/lib/extract/apply-document";
 import { fetchPendingLinks } from "@/lib/enrich/links";
 import { enrichCompanyProfiles } from "@/lib/enrich/company";
+import { syncDocusign } from "@/lib/docusign/sync";
 import { syncGmail } from "@/lib/gmail/sync";
 import { scanCompanyUpdates } from "@/lib/gmail/refresh";
 
@@ -134,5 +135,28 @@ export async function scanForUpdates(form: FormData): Promise<UpdateActionResult
     };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Scan failed." };
+  }
+}
+
+/// Pulls completed envelopes from DocuSign and reads their terms. Independent
+/// of email: whether a completion email carries the PDF is an account setting,
+/// and the envelope is the authoritative copy either way.
+export async function runDocusignSync(): Promise<UpdateActionResult> {
+  const userId = await requireUserId();
+
+  try {
+    const sync = await syncDocusign(userId);
+    const documents = await extractPendingDocuments(userId, { limit: 40 });
+    revalidatePath("/", "layout");
+
+    return {
+      status: "ok",
+      message: `${sync.envelopes} completed envelope${sync.envelopes === 1 ? "" : "s"}: ${sync.stored} stored, ${sync.matched} matched to a company, ${documents.extracted} read, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from them.${sync.failed ? ` ${sync.failed} could not be downloaded.` : ""}`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "DocuSign sync failed.",
+    };
   }
 }
