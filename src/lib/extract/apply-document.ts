@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { downloadAttachment } from "@/lib/storage";
 import { extractDocumentTerms, type DocumentTerms } from "./document";
+import { attachOrphanClaims, recordClaim } from "@/lib/claims";
 import { chooseTargetPosition, gapsOnly, parseIsoDate } from "./fill";
 
 // Folding a document's terms into the portfolio.
@@ -26,7 +27,9 @@ export async function applyTermsToPortfolio(
   companyId: string,
   documentId: string,
   terms: DocumentTerms,
+  opts: { docusignEnvelopeId?: string | null } = {},
 ): Promise<{ positionId: string | null; filled: boolean; recordedAmount: boolean }> {
+  const docusignEnvelopeId = opts.docusignEnvelopeId ?? null;
   if (!terms.isExecuted) return { positionId: null, filled: false, recordedAmount: false };
 
   const positions = await prisma.position.findMany({
@@ -139,6 +142,35 @@ export async function applyTermsToPortfolio(
     data: { positionId: target.id },
   });
 
+  // What the document says, kept beside what every other source says, so a
+  // disagreement can be named rather than merely detected.
+  const source: "DOCUSIGN" | "DOCUMENT" = docusignEnvelopeId ? "DOCUSIGN" : "DOCUMENT";
+  if (terms.amount != null) {
+    await recordClaim({
+      userId,
+      companyId,
+      positionId: target.id,
+      source,
+      kind: "INVESTMENT",
+      amount: terms.amount,
+      sourceQuote: terms.sourceQuotes?.amount ?? null,
+      documentId,
+    });
+  }
+  if (terms.feesAmount != null) {
+    await recordClaim({
+      userId,
+      companyId,
+      positionId: target.id,
+      source,
+      kind: "FEE",
+      amount: terms.feesAmount,
+      sourceQuote: terms.sourceQuotes?.feesAmount ?? null,
+      documentId,
+    });
+  }
+  await attachOrphanClaims(userId, companyId, target.id);
+
   return { positionId: target.id, filled, recordedAmount };
 }
 
@@ -192,7 +224,9 @@ export async function extractPendingDocuments(
 
     if (!document.companyId) continue;
 
-    const applied = await applyTermsToPortfolio(userId, document.companyId, document.id, terms);
+    const applied = await applyTermsToPortfolio(userId, document.companyId, document.id, terms, {
+      docusignEnvelopeId: document.docusignEnvelopeId,
+    });
     if (applied.filled || applied.recordedAmount) filled += 1;
   }
 

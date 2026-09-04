@@ -77,18 +77,52 @@ export async function scanForCompanies(
   const query = opts.query ?? account.syncQuery;
   await updateRun(runId, { step: "Searching your mailbox" });
   const ids = await listMessageIds(accessToken, query, { maxMessages: opts.maxMessages ?? 300 });
+
+  // Anything already stored is read from the database rather than fetched
+  // again. A rescan of a mailbox that has not changed then costs one search
+  // instead of hundreds of message reads, which is most of the wall clock and
+  // all of the Gmail quota.
+  const stored = await prisma.update.findMany({
+    where: { userId, gmailMessageId: { in: ids } },
+    select: {
+      gmailMessageId: true,
+      gmailThreadId: true,
+      receivedAt: true,
+      fromAddress: true,
+      fromName: true,
+      subject: true,
+      rawText: true,
+      links: true,
+    },
+  });
+  const storedById = new Map(stored.map((row) => [row.gmailMessageId, row]));
+  const toFetch = ids.filter((id) => !storedById.has(id));
+
   await updateRun(runId, {
-    step: `Reading ${ids.length} messages`,
-    totalItems: ids.length,
+    step: toFetch.length > 0 ? `Reading ${toFetch.length} new messages` : "Reading stored mail",
+    totalItems: toFetch.length,
     doneItems: 0,
   });
 
   // One unreadable message must not lose a scan that has already fetched
   // hundreds. Everything retryable is handled inside the client; what reaches
   // here is a message that genuinely cannot be read.
-  const emails: ScannedEmail[] = [];
+  const emails: ScannedEmail[] = stored.map((row) => ({
+    gmailMessageId: row.gmailMessageId,
+    gmailThreadId: row.gmailThreadId,
+    receivedAt: row.receivedAt,
+    fromAddress: row.fromAddress,
+    fromName: row.fromName,
+    subject: row.subject,
+    text: row.rawText,
+    links: row.links,
+    // Attachment names are only needed as evidence for a first read; a stored
+    // message has already been through that.
+    attachments: [],
+  }));
+
   let unreadable = 0;
-  for (const id of ids) {
+  for (const id of toFetch) {
     try {
       const email = await getMessage(accessToken, id);
       if (email.text.trim()) emails.push(email);
@@ -111,17 +145,8 @@ export async function scanForCompanies(
   // company is accepted. Attachments are left to the next sync, which keeps the
   // scan fast.
   await updateRun(runId, { step: "Storing what it read" });
-  const alreadyStored = new Set(
-    (
-      await prisma.update.findMany({
-        where: { userId, gmailMessageId: { in: emails.map((email) => email.gmailMessageId) } },
-        select: { gmailMessageId: true },
-      })
-    ).map((row) => row.gmailMessageId),
-  );
-
   for (const email of emails) {
-    if (alreadyStored.has(email.gmailMessageId)) continue;
+    if (storedById.has(email.gmailMessageId)) continue;
     await prisma.update.create({
       data: {
         userId,

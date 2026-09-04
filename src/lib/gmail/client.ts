@@ -157,6 +157,45 @@ export async function listMessageIds(
   return ids.slice(0, maxMessages);
 }
 
+/// Asks Gmail to push a notification to a Pub/Sub topic whenever the mailbox
+/// changes. Google caps a watch at seven days, so the expiry it returns has to
+/// be tracked and the watch renewed before it lapses, or push stops with no
+/// error anywhere.
+export async function watchMailbox(
+  accessToken: string,
+  topicName: string,
+  opts: { labelIds?: string[] } = {},
+): Promise<{ historyId: string; expiration: Date }> {
+  const response = await fetch(`${GMAIL_API}/watch`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      topicName,
+      labelFilterBehavior: "include",
+      ...(opts.labelIds?.length ? { labelIds: opts.labelIds } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gmail watch failed (${response.status}): ${await response.text()}`);
+  }
+  const data = (await response.json()) as { historyId?: string; expiration?: string };
+  return {
+    historyId: data.historyId ?? "",
+    expiration: new Date(Number(data.expiration ?? Date.now() + 6 * 864e5)),
+  };
+}
+
+export async function stopWatch(accessToken: string): Promise<void> {
+  await fetch(`${GMAIL_API}/stop`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
 export async function getMessage(accessToken: string, id: string): Promise<ParsedEmail> {
   const message = await gmailGet<GmailMessage>(accessToken, `/messages/${id}?format=full`);
   return parseMessage(message);

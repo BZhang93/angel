@@ -11,6 +11,7 @@ import { enrichCompanyProfiles } from "@/lib/enrich/company";
 import { syncDocusign } from "@/lib/docusign/sync";
 import { syncGmail } from "@/lib/gmail/sync";
 import { rematchPendingUpdates } from "@/lib/gmail/rematch";
+import { ensureWatch } from "@/lib/gmail/pipeline";
 import { scanCompanyUpdates } from "@/lib/gmail/refresh";
 
 export type UpdateActionResult = { status: "error"; message: string } | { status: "ok"; message: string } | void;
@@ -169,31 +170,37 @@ export async function runDocusignSync(): Promise<UpdateActionResult> {
   }
 }
 
-/// Reconsiders everything in the review queue against the current portfolio,
-/// then extracts what it manages to file. The button to press after importing
-/// companies, when mail synced earlier had nothing to match against.
-export async function rematchQueue(): Promise<UpdateActionResult> {
+/// Turns automatic syncing on or off.
+///
+/// Two mechanisms serve it. With a Pub/Sub topic configured, Gmail pushes a
+/// notification the moment mail arrives and the whole pipeline runs. Without
+/// one, the hourly scheduled run does the same work. Google cannot push to a
+/// laptop, so local development always uses the second.
+export async function setAutoSync(form: FormData): Promise<UpdateActionResult> {
   const userId = await requireUserId();
+  const enabled = String(form.get("enabled") ?? "") === "true";
 
-  try {
-    const rematch = await rematchPendingUpdates(userId);
-    if (rematch.matched === 0) {
-      return {
-        status: "ok",
-        message: `Nothing new could be matched. ${rematch.stillPending} update${rematch.stillPending === 1 ? "" : "s"} still need a company chosen by hand.`,
-      };
-    }
+  const updated = await prisma.gmailAccount.updateMany({
+    where: { userId },
+    data: { autoSync: enabled, ...(enabled ? {} : { watchExpiresAt: null }) },
+  });
+  if (updated.count === 0) return { status: "error", message: "Connect Gmail first." };
 
-    await fetchPendingLinks(userId);
-    const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 80 });
-    const documents = await extractPendingDocuments(userId);
-    revalidatePath("/", "layout");
-
-    return {
-      status: "ok",
-      message: `Filed ${rematch.matched} of ${rematch.considered} pending emails and extracted ${extraction.extracted}. ${rematch.stillPending} still need a company chosen by hand.${documents.filled ? ` ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from documents.` : ""}`,
-    };
-  } catch (error) {
-    return { status: "error", message: error instanceof Error ? error.message : "Re-match failed." };
+  if (!enabled) {
+    revalidatePath("/settings");
+    return { status: "ok", message: "Auto-sync off. Use Sync Now when you want an update." };
   }
+
+  const watch = await ensureWatch(userId).catch((error: unknown) => ({
+    watching: false,
+    reason: error instanceof Error ? error.message : "Could not register the Gmail watch.",
+  }));
+
+  revalidatePath("/settings");
+  return {
+    status: "ok",
+    message: watch.watching
+      ? "Auto-sync on. Gmail will push new mail as it arrives, and the hourly run is the backstop."
+      : `Auto-sync on, polling hourly. ${watch.reason ?? ""}`.trim(),
+  };
 }

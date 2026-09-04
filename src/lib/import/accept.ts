@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { CompanyProposalSchema, type Proposal } from "./schema";
 import { findExistingCompany, domainOfWebsite } from "./identity";
 import { isCompanyDomain } from "./domains";
+import { recordClaim } from "@/lib/claims";
 
 // Turning an accepted proposal into portfolio rows. Kept separate from the scan
 // so accepting never depends on the LLM, and so the write path is one place.
@@ -81,6 +82,11 @@ export async function acceptCandidate(
   });
   const match = findExistingCompany({ name, website }, existing);
 
+  // Collected inside the transaction, written after it: claims are commentary
+  // on the portfolio rather than part of it, and must not hold the write open.
+  const claimed: { positionId: string; kind: "INVESTMENT" | "FEE"; amount: number; quote: string }[] =
+    [];
+
   const companyId = await prisma.$transaction(async (tx) => {
     const company = match
       ? await tx.company.update({
@@ -146,6 +152,12 @@ export async function acceptCandidate(
       });
 
       if (proposedPosition.amount != null && proposedPosition.amount > 0) {
+        claimed.push({
+          positionId: position.id,
+          kind: "INVESTMENT" as const,
+          amount: proposedPosition.amount,
+          quote: proposedPosition.sourceQuote,
+        });
         await tx.transaction.create({
           data: {
             userId,
@@ -160,6 +172,12 @@ export async function acceptCandidate(
       // Fees buy no ownership, so they go in the ledger as their own line and
       // drag the return, which is the honest treatment.
       if (proposedPosition.feesAmount != null && proposedPosition.feesAmount > 0) {
+        claimed.push({
+          positionId: position.id,
+          kind: "FEE" as const,
+          amount: proposedPosition.feesAmount,
+          quote: proposedPosition.sourceQuote,
+        });
         await tx.transaction.create({
           data: {
             userId,
@@ -196,6 +214,18 @@ export async function acceptCandidate(
 
     return company.id;
   });
+
+  for (const claim of claimed) {
+    await recordClaim({
+      userId,
+      companyId,
+      positionId: claim.positionId,
+      source: "EMAIL_COMMITMENT",
+      kind: claim.kind,
+      amount: claim.amount,
+      sourceQuote: claim.quote,
+    });
+  }
 
   return { companyId };
 }

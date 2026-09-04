@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { syncGmail } from "@/lib/gmail/sync";
+import { ensureWatch, runIngestPipeline } from "@/lib/gmail/pipeline";
 import { currentUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 
@@ -10,7 +10,11 @@ async function resolveUserId(request: Request): Promise<string | null> {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
   if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    const account = await prisma.gmailAccount.findFirst({ select: { userId: true } });
+    // The scheduled run only touches accounts that asked for it.
+    const account = await prisma.gmailAccount.findFirst({
+      where: { autoSync: true },
+      select: { userId: true },
+    });
     return account?.userId ?? null;
   }
   const user = await currentUser();
@@ -22,7 +26,10 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: "Not authorized." }, { status: 401 });
 
   try {
-    const result = await syncGmail(userId);
+    const result = await runIngestPipeline(userId);
+    // Renewing here is what keeps push alive: a Gmail watch lapses after seven
+    // days and stops delivering silently.
+    await ensureWatch(userId);
     revalidatePath("/", "layout");
     return NextResponse.json(result);
   } catch (error) {

@@ -18,6 +18,7 @@ import { ScanUpdatesButton } from "../../updates/scan-updates-button";
 import { UploadDocument } from "./upload-document";
 import { DocumentActions } from "./document-actions";
 import { addYears } from "@/lib/signals";
+import { findDiscrepancies, type Claim } from "@/lib/discrepancies";
 import {
   addActionItem,
   addPosition,
@@ -147,6 +148,17 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
         ) : (
           <div className="space-y-4">
             {company.positions.map((position) => {
+              // Every source's statement about this position, compared. The
+              // point is to name the one that disagrees, not just to flag it.
+              const claims: Claim[] = company.claims
+                .filter((claim) => claim.positionId === position.id)
+                .map((claim) => ({
+                  source: claim.source,
+                  kind: claim.kind,
+                  amount: Number(claim.amount.toString()),
+                }));
+              const discrepancies = findDiscrepancies(claims);
+
               const invested = position.transactions
                 .filter((t) => ["INVESTMENT", "CAPITAL_CALL", "FEE"].includes(t.kind))
                 .reduce((total, t) => total + Number(t.amount.toString()), 0);
@@ -178,9 +190,29 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                       <h3 className="text-sm font-semibold">{titleCase(position.instrumentType)}</h3>
                       {position.investmentGroup && <Pill>via {position.investmentGroup}</Pill>}
                       {position.convertedIntoId && <Pill>Converted</Pill>}
+                      {discrepancies.length > 0 && (
+                        <span
+                          title={discrepancies
+                            .map((entry) => `${entry.label}. ${entry.detail}`)
+                            .join("\n")}
+                          className="inline-flex cursor-help items-center rounded border border-warn/30 bg-warn/10 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-warn"
+                        >
+                          Needs Review
+                        </span>
+                      )}
                     </div>
                     <span className="tabular text-sm text-muted">{money(invested)} in</span>
                   </div>
+
+                  {discrepancies.length > 0 && (
+                    <ul className="mt-2 space-y-0.5">
+                      {discrepancies.map((entry, index) => (
+                        <li key={index} className="text-xs text-warn">
+                          {entry.label}. {entry.detail}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
                     {terms.map(([label, value]) => (

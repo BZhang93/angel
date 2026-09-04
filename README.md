@@ -60,6 +60,20 @@ extraction replaces machine-written rows and never touches a value a human corre
 **Matching is conservative.** An email is auto-assigned to a company only on a known contact
 address or a matching sender domain. Anything weaker waits in the review queue at `/updates`.
 
+## Auto-sync
+
+Off by default. Turned on in Settings, it is served two ways:
+
+- **Push**, when `GOOGLE_PUBSUB_TOPIC` is set and the deployment is reachable by Google. Gmail
+  publishes to the topic on every mailbox change, a Pub/Sub push subscription calls
+  `/api/gmail/push?token=$CRON_SECRET`, and the full pipeline runs. A Gmail watch lapses after
+  seven days, so it is renewed on every scheduled run.
+- **Polling**, otherwise. The hourly Vercel cron runs the same pipeline. This is the only option
+  in local development, because Google cannot push to a laptop.
+
+Either way the work is identical, because a button, the cron and the webhook all call
+`runIngestPipeline`.
+
 ## Privacy
 
 This holds personal financial data and confidential private-company information.

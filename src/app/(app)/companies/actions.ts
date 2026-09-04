@@ -8,6 +8,7 @@ import { attachmentPath, uploadAttachment } from "@/lib/storage";
 import { guessDocumentKind } from "@/lib/gmail/parse";
 import { extractDocumentTerms } from "@/lib/extract/document";
 import { applyTermsToPortfolio } from "@/lib/extract/apply-document";
+import { recordClaim } from "@/lib/claims";
 import { downloadAttachment, deleteAttachment } from "@/lib/storage";
 import { randomUUID } from "node:crypto";
 import type { DocumentKind } from "@/generated/prisma/enums";
@@ -168,16 +169,23 @@ export async function addTransaction(form: FormData): Promise<ActionResult> {
   });
   if (!position) return { status: "error", message: "Position not found." };
 
+  const kind = (optionalStr(form, "kind") ?? "INVESTMENT") as TransactionKind;
   await prisma.transaction.create({
-    data: {
-      userId,
-      positionId,
-      kind: (optionalStr(form, "kind") ?? "INVESTMENT") as TransactionKind,
-      amount,
-      date,
-      notes: optionalStr(form, "notes"),
-    },
+    data: { userId, positionId, kind, amount, date, notes: optionalStr(form, "notes") },
   });
+
+  // A number typed by hand outranks every extracted one, so it is recorded as
+  // a claim too and becomes the value the others are checked against.
+  if (kind === "INVESTMENT" || kind === "CAPITAL_CALL" || kind === "FEE") {
+    await recordClaim({
+      userId,
+      companyId: position.companyId,
+      positionId,
+      source: "MANUAL",
+      kind: kind === "FEE" ? "FEE" : "INVESTMENT",
+      amount,
+    });
+  }
 
   revalidatePath(`/companies/${position.companyId}`);
 }

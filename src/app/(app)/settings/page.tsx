@@ -7,6 +7,7 @@ import { shortDate } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
 import { SyncPanel } from "./sync-panel";
 import { DocusignPanel } from "./docusign-panel";
+import { AutoSyncToggle } from "./auto-sync-toggle";
 
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const userId = await requireUserId();
@@ -39,6 +40,12 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               </span>
             </div>
             <SyncPanel syncQuery={account.syncQuery} pendingCount={pendingCount} />
+            <div className="border-t border-border pt-3">
+              <AutoSyncToggle
+                enabled={account.autoSync}
+                pushReady={!!process.env.GOOGLE_PUBSUB_TOPIC}
+              />
+            </div>
           </div>
         ) : (
           <div className="space-y-2">

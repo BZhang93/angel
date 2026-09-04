@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { matchCompanyByContent } from "@/lib/gmail/content-match";
 import { reconcilePayment, type RecordedPosition } from "@/lib/reconcile";
+import { recordClaim } from "@/lib/claims";
 import type { Extraction } from "./schema";
 
 // Turning an extracted bank transfer into a reconciled Payment.
@@ -89,7 +90,7 @@ export async function recordPayment(
         ? "DISCREPANCY"
         : "UNMATCHED";
 
-  await prisma.payment.create({
+  const created = await prisma.payment.create({
     data: {
       userId,
       updateId: input.updateId,
@@ -105,6 +106,35 @@ export async function recordPayment(
       sourceQuote: input.payment.sourceQuote,
     },
   });
+
+  // What the bank says left the account, which is a gross figure: investment
+  // plus whatever fees were bundled in.
+  if (companyId) {
+    await recordClaim({
+      userId,
+      companyId,
+      positionId: "positionId" in verdict ? verdict.positionId : null,
+      source: "BANK_TRANSFER",
+      kind: "TOTAL",
+      amount: input.payment.amount,
+      sourceQuote: input.payment.sourceQuote,
+      updateId: input.updateId,
+      paymentId: created.id,
+    });
+    if (input.payment.statedFees != null) {
+      await recordClaim({
+        userId,
+        companyId,
+        positionId: "positionId" in verdict ? verdict.positionId : null,
+        source: "BANK_TRANSFER",
+        kind: "FEE",
+        amount: input.payment.statedFees,
+        sourceQuote: input.payment.sourceQuote,
+        updateId: input.updateId,
+        paymentId: created.id,
+      });
+    }
+  }
 
   // Fees the wire revealed are recorded as their own ledger line, so the return
   // is honest and the next reconciliation matches without re-deriving them.

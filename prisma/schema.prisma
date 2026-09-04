@@ -173,6 +173,27 @@ enum PaymentState {
   IGNORED
 }
 
+/// Where a stated amount came from. Kept apart because the whole point is to
+/// say which source disagrees, not merely that something does.
+enum ClaimSource {
+  EMAIL_COMMITMENT
+  EMAIL_CONFIRMATION
+  BANK_TRANSFER
+  DOCUMENT
+  DOCUSIGN
+  MANUAL
+}
+
+/// What the amount is meant to be.
+enum ClaimKind {
+  /// Money invested, fees excluded.
+  INVESTMENT
+  /// Legal, admin or setup fees.
+  FEE
+  /// The gross that left the account: investment plus fees.
+  TOTAL
+}
+
 enum DocumentKind {
   SAFE
   NOTE
@@ -216,6 +237,7 @@ model Company {
 
   positions   Position[]
   payments    Payment[]
+  claims      AmountClaim[]
   valuations  Valuation[]
   updates     Update[]
   signals     Signal[]
@@ -310,6 +332,7 @@ model Position {
   transactions Transaction[]
   documents    Document[]
   payments     Payment[]
+  claims       AmountClaim[]
 
   @@index([userId])
   @@index([companyId])
@@ -373,6 +396,14 @@ model GmailAccount {
   /// Cursor for incremental history-API syncs.
   lastHistoryId         String?
   lastSyncedAt          DateTime?
+
+  /// Keep the mailbox in step without being asked. Two mechanisms serve it: a
+  /// Gmail push subscription when one is configured, and a scheduled poll
+  /// otherwise. The flag governs both.
+  autoSync              Boolean   @default(false)
+  /// When the current Gmail watch expires. Google caps a watch at seven days,
+  /// so it has to be renewed or push silently stops.
+  watchExpiresAt        DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -672,5 +703,39 @@ model Payment {
   updatedAt DateTime @updatedAt
 
   @@index([userId, state])
+  @@index([companyId])
+}
+
+/// One source's statement of what was invested.
+///
+/// An investment is asserted by several places that should agree: the founder's
+/// commitment email, the confirmation with its fee, the bank's wire, and the
+/// signed document. Recording each claim separately is what lets the app say
+/// "the signed document's total does not match" rather than showing a single
+/// number and hoping it is the right one.
+model AmountClaim {
+  id         String      @id @default(uuid())
+  userId     String
+  companyId  String
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  positionId String?
+  position   Position?   @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  source     ClaimSource
+  kind       ClaimKind
+  amount     Decimal     @db.Decimal(18, 2)
+  currency   String      @default("USD")
+  /// The sentence, clause or field the number came from.
+  sourceQuote String?
+  /// What produced it, for tracing back.
+  updateId    String?
+  documentId  String?
+  paymentId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One claim per source and kind per position: a re-read replaces rather than
+  /// piles up.
+  @@unique([userId, positionId, source, kind])
   @@index([companyId])
 }
