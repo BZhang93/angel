@@ -1,4 +1,4 @@
-import { Card, Pill } from "@/components/ui";
+import { CONTROL_PRIMARY, Card, Pill } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { aiConfigured } from "@/lib/ai/client";
 import { googleOAuthConfigured } from "@/lib/gmail/client";
@@ -47,7 +47,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             </p>
             <a
               href="/api/gmail/connect"
-              className="inline-block rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"
+              className={`inline-block ${CONTROL_PRIMARY}`}
             >
               Connect Gmail
             </a>
@@ -91,7 +91,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             </p>
             <a
               href="/api/docusign/connect"
-              className="inline-block rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"
+              className={`inline-block ${CONTROL_PRIMARY}`}
             >
               Connect DocuSign
             </a>

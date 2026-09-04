@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { runDocusignSync, type UpdateActionResult } from "@/app/(app)/updates/actions";
+import { CONTROL_PRIMARY } from "@/components/ui";
 
 export function DocusignPanel({ accountName }: { accountName: string | null }) {
   const [result, setResult] = useState<UpdateActionResult>(undefined);
@@ -18,7 +19,7 @@ export function DocusignPanel({ accountName }: { accountName: string | null }) {
             setResult(await runDocusignSync());
             setPending(false);
           }}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+          className={CONTROL_PRIMARY}
         >
           {pending ? "Pulling Envelopes…" : "Pull Signed Documents"}
         </button>

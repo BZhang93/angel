@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Card, EmptyState, SeverityBadge, Stat } from "@/components/ui";
+import { CONTROL_PRIMARY, Card, EmptyState, SeverityBadge, Stat } from "@/components/ui";
 import {
   concentration,
   getCompanySummaries,
@@ -55,7 +55,7 @@ export default async function DashboardPage() {
         <h1 className="text-lg font-semibold">Portfolio</h1>
         <Link
           href="/companies/new"
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"
+          className={CONTROL_PRIMARY}
         >
           Add Company
         </Link>

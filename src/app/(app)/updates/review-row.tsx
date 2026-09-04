@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { confirmUpdate, rejectUpdate } from "./actions";
+import { CONTROL_PRIMARY, CONTROL_SECONDARY } from "@/components/ui";
 
 export function ReviewRow({
   updateId,
@@ -30,7 +31,7 @@ export function ReviewRow({
         <select
           name="companyId"
           defaultValue={suggestedCompanyId ?? ""}
-          className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+          className={CONTROL_SECONDARY}
         >
           <option value="">Choose a company…</option>
           {companies.map((company) => (
@@ -42,14 +43,14 @@ export function ReviewRow({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+          className={CONTROL_PRIMARY}
         >
           {pending ? "Extracting…" : "Assign and Extract"}
         </button>
         <button
           type="submit"
           formAction={rejectUpdate}
-          className="rounded-md border border-border px-3 py-1.5 text-sm"
+          className={CONTROL_SECONDARY}
         >
           Not an Update
         </button>

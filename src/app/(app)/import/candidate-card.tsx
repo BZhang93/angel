@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { dismissCandidate, importCandidate } from "./actions";
+import { CONTROL_PRIMARY, CONTROL_SECONDARY } from "@/components/ui";
 
 /// The editable footer of a proposal. Name, website and sector are the three
 /// fields worth correcting before import; everything else is easier to fix on
@@ -32,7 +33,7 @@ export function CandidateCard({
         </p>
       )}
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-wrap items-center gap-2"
         action={async (form) => {
           setPending(true);
           const result = await importCandidate(form);
@@ -68,14 +69,14 @@ export function CandidateCard({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+          className={CONTROL_PRIMARY}
         >
           {pending ? "Importing…" : mergeHint ? "Merge In" : "Import"}
         </button>
         <button
           type="submit"
           formAction={dismissCandidate}
-          className="rounded-md border border-border px-3 py-1.5 text-sm"
+          className={CONTROL_SECONDARY}
         >
           Not an Investment
         </button>

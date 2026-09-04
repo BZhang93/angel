@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Card, Pill, SeverityBadge } from "@/components/ui";
+import { Card, ControlRow, CONTROL_SECONDARY, Pill, SeverityBadge } from "@/components/ui";
 import { ActionForm, Checkbox, Field, Select } from "@/components/forms";
 import {
   ACTION_KIND_OPTIONS,
@@ -71,16 +71,17 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
             {company.sector && <Pill>{company.sector}</Pill>}
           </div>
         </div>
-        <div className="flex flex-wrap items-start gap-3">
-        <ScanUpdatesButton companyId={company.id} />
-        <form action={updateCompanyStatus} className="flex items-end gap-2">
-          <input type="hidden" name="id" value={company.id} />
-          <label className="text-sm">
-            <span className="text-muted">Status</span>
+        <ControlRow>
+          <ScanUpdatesButton companyId={company.id} />
+          <form action={updateCompanyStatus} className="flex items-center gap-2">
+            <input type="hidden" name="id" value={company.id} />
+            {/* Labelled by aria rather than a stacked <label>: a label above one
+                control makes it taller than its neighbours and breaks the row. */}
             <select
               name="status"
+              aria-label="Company status"
               defaultValue={company.status}
-              className="mt-1 block rounded-md border border-border bg-surface px-3 py-1.5"
+              className={CONTROL_SECONDARY}
             >
               {STATUS_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -88,12 +89,11 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                 </option>
               ))}
             </select>
-          </label>
-          <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-sm">
-            Update
-          </button>
-        </form>
-        </div>
+            <button type="submit" className={CONTROL_SECONDARY}>
+              Update
+            </button>
+          </form>
+        </ControlRow>
       </div>
 
       {company.notes && (

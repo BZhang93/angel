@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CONTROL_PRIMARY, CONTROL_SECONDARY } from "@/components/ui";
 import { scanForUpdates, type UpdateActionResult } from "./actions";
 
 /// Searches the mailbox for mail from companies already in the portfolio.
@@ -17,13 +18,13 @@ export function ScanUpdatesButton({
   const [result, setResult] = useState<UpdateActionResult>(undefined);
   const [pending, setPending] = useState(false);
 
-  const className =
-    variant === "primary"
-      ? "rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
-      : "rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60";
+  const className = variant === "primary" ? CONTROL_PRIMARY : CONTROL_SECONDARY;
 
+  // `contents` lets the button participate directly in the parent ControlRow,
+  // so this component never introduces a taller child that breaks alignment.
+  // The result message takes a full basis, dropping onto its own line.
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="contents">
       <form
         action={async (form) => {
           setPending(true);
@@ -36,8 +37,13 @@ export function ScanUpdatesButton({
           {pending ? "Scanning…" : label}
         </button>
       </form>
-      {result?.status === "error" && <p className="text-sm text-negative">{result.message}</p>}
-      {result?.status === "ok" && <p className="text-right text-xs text-muted">{result.message}</p>}
+      {result != null && (
+        <p
+          className={`basis-full text-xs ${result.status === "error" ? "text-negative" : "text-muted"}`}
+        >
+          {result.message}
+        </p>
+      )}
     </div>
   );
 }

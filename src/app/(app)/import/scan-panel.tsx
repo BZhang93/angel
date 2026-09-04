@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { importAll, runScan, type ImportResult } from "./actions";
+import { CONTROL_PRIMARY, CONTROL_SECONDARY } from "@/components/ui";
 
 export function ScanPanel({
   defaultQuery,
@@ -37,12 +38,12 @@ export function ScanPanel({
             id="query"
             name="query"
             defaultValue={defaultQuery}
-            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-1.5 font-mono text-sm"
+            className={`${CONTROL_SECONDARY} min-w-0 flex-1 font-mono`}
           />
           <button
             type="submit"
             disabled={pending}
-            className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+            className={CONTROL_PRIMARY}
           >
             {pending ? "Scanning…" : "Scan Mailbox"}
           </button>
@@ -61,7 +62,7 @@ export function ScanPanel({
               type="button"
               disabled={pending}
               onClick={() => run(importAll)}
-              className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60"
+              className={CONTROL_SECONDARY}
             >
               Import All Proposals
             </button>

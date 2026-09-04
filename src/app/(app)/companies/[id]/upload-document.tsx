@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { uploadDocument } from "../actions";
+import { CONTROL_PRIMARY } from "@/components/ui";
 
 /// Drop in a signed SAFE, note or side letter and have it read on the spot.
 /// The way in when DocuSign's API is off the table, which it is on plans that
@@ -34,7 +35,7 @@ export function UploadDocument({ companyId }: { companyId: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+        className={CONTROL_PRIMARY}
       >
         {pending ? "Reading…" : "Upload And Read"}
       </button>

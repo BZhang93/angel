@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { CONTROL_PRIMARY } from "@/components/ui";
 
 // Thin client wrappers so server actions can report validation errors inline
 // without every page becoming a client component.
@@ -37,7 +38,7 @@ export function ActionForm({
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+        className={CONTROL_PRIMARY}
       >
         {pending ? "Saving…" : submitLabel}
       </button>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { login, signup, type AuthResult } from "./actions";
+import { CONTROL_PRIMARY, CONTROL_SECONDARY } from "@/components/ui";
 
 export default function LoginPage() {
   const [result, setResult] = useState<AuthResult | null>(null);
@@ -59,7 +60,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={pending}
-              className="flex-1 rounded-md bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className={CONTROL_PRIMARY}
             >
               {pending ? "Working…" : "Sign In"}
             </button>
@@ -67,7 +68,7 @@ export default function LoginPage() {
               type="submit"
               disabled={pending}
               formAction={(form) => run(signup, form)}
-              className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-60"
+              className={CONTROL_SECONDARY}
             >
               Create Account
             </button>

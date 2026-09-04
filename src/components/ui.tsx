@@ -5,6 +5,21 @@ import type { Severity } from "@/lib/signals";
 // Shared presentational pieces. Small on purpose: this app is tables and
 // numbers, and consistency matters more than variety.
 
+/// Shared control geometry. Every button, select and input that can sit beside
+/// another control uses this, so a row of them lines up by construction rather
+/// than by whoever wrote the classes that day.
+export const CONTROL = "rounded-md px-3 py-1.5 text-sm";
+export const CONTROL_PRIMARY = `${CONTROL} bg-accent font-medium text-white disabled:opacity-60`;
+export const CONTROL_SECONDARY = `${CONTROL} border border-border bg-surface disabled:opacity-60`;
+
+/// A row of controls of equal height. Labels do not belong inside it: a label
+/// stacked above one control makes that child taller than its neighbours, which
+/// is exactly how a row falls out of alignment. Label the control itself
+/// (aria-label) or put the label above the whole row.
+export function ControlRow({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2">{children}</div>;
+}
+
 export function Card({
   title,
   action,

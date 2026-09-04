@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { EmptyState, Pill, SeverityBadge } from "@/components/ui";
+import { CONTROL_PRIMARY, EmptyState, Pill, SeverityBadge } from "@/components/ui";
 import { getCompanySummaries } from "@/lib/data/portfolio";
 import { money, multiple, percent, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
@@ -27,7 +27,7 @@ export default async function CompaniesPage() {
           <ScanUpdatesButton />
           <Link
             href="/companies/new"
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white"
+            className={CONTROL_PRIMARY}
           >
             Add Company
           </Link>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { runSync, type UpdateActionResult } from "@/app/(app)/updates/actions";
+import { CONTROL_PRIMARY, CONTROL_SECONDARY } from "@/components/ui";
 
 export function SyncPanel({
   syncQuery,
@@ -35,12 +36,12 @@ export function SyncPanel({
             id="syncQuery"
             name="syncQuery"
             defaultValue={syncQuery}
-            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-1.5 font-mono text-sm"
+            className={`${CONTROL_SECONDARY} min-w-0 flex-1 font-mono`}
           />
           <button
             type="submit"
             disabled={pending}
-            className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+            className={CONTROL_PRIMARY}
           >
             {pending ? "Syncing…" : "Sync Now"}
           </button>
