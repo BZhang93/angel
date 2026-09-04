@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/session";
 import { extractFromUpdate } from "@/lib/extract/update";
 import { applyExtraction, extractPendingUpdates } from "@/lib/extract/apply";
+import { extractPendingDocuments } from "@/lib/extract/apply-document";
 import { syncGmail } from "@/lib/gmail/sync";
 
 export type UpdateActionResult = { status: "error"; message: string } | { status: "ok"; message: string } | void;
@@ -72,10 +73,19 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
   try {
     const sync = await syncGmail(userId);
     const extraction = await extractPendingUpdates(userId, extractFromUpdate);
+    const documents = await extractPendingDocuments(userId);
     revalidatePath("/", "layout");
     return {
       status: "ok",
-      message: `${sync.created} new (${sync.autoMatched} auto-matched, ${sync.pending} awaiting review). Extracted ${extraction.extracted}${extraction.failed ? `, ${extraction.failed} failed` : ""}.`,
+      message: [
+        `${sync.created} new (${sync.autoMatched} auto-matched, ${sync.pending} awaiting review).`,
+        `Extracted ${extraction.extracted} update${extraction.extracted === 1 ? "" : "s"}${extraction.failed ? `, ${extraction.failed} failed` : ""}.`,
+        sync.documents > 0 || documents.extracted > 0
+          ? `${sync.documents} document${sync.documents === 1 ? "" : "s"} stored, ${documents.extracted} read, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from them.`
+          : null,
+      ]
+        .filter((part) => part !== null)
+        .join(" "),
     };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Sync failed." };

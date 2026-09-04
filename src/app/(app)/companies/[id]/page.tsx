@@ -13,6 +13,7 @@ import {
 import { getCompanyDetail, getCompanySummaries } from "@/lib/data/portfolio";
 import { money, multiple, percent, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
+import { signedUrl } from "@/lib/storage";
 import { addYears } from "@/lib/signals";
 import {
   addActionItem,
@@ -37,6 +38,15 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
   // The summary carries the computed numbers and the derived signals, so the
   // detail page never re-implements the maths.
   const summary = (await getCompanySummaries(userId)).find((entry) => entry.id === id);
+
+  // Signed links are minted per render and expire in minutes: the bucket is
+  // private, and a URL that outlives the page is a leak waiting to happen.
+  const documentLinks = await Promise.all(
+    company.documents.map(async (document) => ({
+      ...document,
+      href: document.storagePath ? await signedUrl(document.storagePath) : null,
+    })),
+  );
 
   return (
     <div className="space-y-6">
@@ -310,6 +320,46 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
           </details>
         </Card>
       </div>
+
+      <Card title="Documents">
+        {documentLinks.length === 0 ? (
+          <p className="py-2 text-sm text-muted">
+            No documents yet. Signed SAFEs, side letters and tax forms arrive automatically as
+            email attachments.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {documentLinks.map((document) => (
+              <li key={document.id} className="flex items-start justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {document.href ? (
+                      <a
+                        href={document.href}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="truncate text-sm font-medium hover:underline"
+                      >
+                        {document.title}
+                      </a>
+                    ) : (
+                      <span className="truncate text-sm font-medium">{document.title}</span>
+                    )}
+                    <Pill>{titleCase(document.kind)}</Pill>
+                    {!document.storagePath && <Pill>not downloaded</Pill>}
+                  </div>
+                  {document.summary && (
+                    <p className="mt-0.5 text-sm text-muted">{document.summary}</p>
+                  )}
+                </div>
+                <span className="tabular shrink-0 text-xs text-muted">
+                  {document.sizeBytes ? `${Math.round(document.sizeBytes / 1024)} KB` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card title="Updates">
         {company.updates.length === 0 ? (

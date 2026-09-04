@@ -11,7 +11,9 @@ export interface GmailPart {
   mimeType?: string;
   filename?: string;
   headers?: GmailHeader[];
-  body?: { data?: string; size?: number };
+  /// An attachment part carries `attachmentId` instead of inline `data`; the
+  /// bytes are a separate fetch.
+  body?: { data?: string; size?: number; attachmentId?: string };
   parts?: GmailPart[];
 }
 
@@ -106,6 +108,75 @@ export function stripQuotedReplies(text: string): string {
   return (signature >= 0 ? trimmed.slice(0, signature) : trimmed).trim();
 }
 
+export interface EmailAttachment {
+  /// Gmail's handle for fetching the bytes, valid for this message only.
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+/// Attachment parts anywhere in the MIME tree. Inline images (a logo in a
+/// signature) carry a Content-ID and no useful filename, so they are dropped:
+/// the point is signed documents, not decoration.
+export function listAttachments(part: GmailPart | undefined): EmailAttachment[] {
+  if (!part) return [];
+  const found: EmailAttachment[] = [];
+
+  const walk = (node: GmailPart) => {
+    const filename = node.filename?.trim();
+    const attachmentId = node.body?.attachmentId;
+
+    if (filename && attachmentId) {
+      const isInline = node.headers?.some(
+        (h) =>
+          h.name.toLowerCase() === "content-disposition" && /^inline/i.test(h.value.trim()),
+      );
+      if (!isInline) {
+        found.push({
+          attachmentId,
+          filename,
+          mimeType: node.mimeType ?? "application/octet-stream",
+          sizeBytes: node.body?.size ?? 0,
+        });
+      }
+    }
+
+    for (const child of node.parts ?? []) walk(child);
+  };
+
+  walk(part);
+  return found;
+}
+
+/// Which attachments are worth storing and reading. A fundraising deck is
+/// thirty slides of noise with no binding terms; a signed SAFE is the terms.
+const READABLE_MIME_TYPES = ["application/pdf"];
+
+export function isWorthReading(
+  attachment: EmailAttachment,
+  opts: { maxBytes?: number } = {},
+): boolean {
+  const maxBytes = opts.maxBytes ?? 20 * 1024 * 1024;
+  if (attachment.sizeBytes > maxBytes) return false;
+  if (READABLE_MIME_TYPES.includes(attachment.mimeType)) return true;
+  return /\.pdf$/i.test(attachment.filename);
+}
+
+/// Best guess at what a document is, from its filename. Only ever a default:
+/// the reviewer can change it, and the extractor confirms it from the contents.
+export function guessDocumentKind(filename: string): string {
+  const name = filename.toLowerCase();
+  if (/side[\s_-]?letter/.test(name)) return "SIDE_LETTER";
+  if (/\bsafe\b|simple agreement/.test(name)) return "SAFE";
+  if (/promissory|convertible|\bnote\b/.test(name)) return "NOTE";
+  if (/cap[\s_-]?table|capitalization/.test(name)) return "CAP_TABLE";
+  if (/k-?1\b/.test(name)) return "K1";
+  if (/1099|8949|schedule|tax/.test(name)) return "TAX_OTHER";
+  if (/stock|purchase agreement|subscription|series [a-z]\b/.test(name)) return "EQUITY_DOCS";
+  return "OTHER";
+}
+
 export interface ParsedEmail {
   gmailMessageId: string;
   gmailThreadId: string | null;
@@ -114,6 +185,7 @@ export interface ParsedEmail {
   fromName: string | null;
   subject: string | null;
   text: string;
+  attachments: EmailAttachment[];
 }
 
 export function parseMessage(message: GmailMessage): ParsedEmail {
@@ -133,5 +205,6 @@ export function parseMessage(message: GmailMessage): ParsedEmail {
     fromName: from.name,
     subject: header(message, "Subject"),
     text: stripQuotedReplies(extractBody(message.payload)),
+    attachments: listAttachments(message.payload),
   };
 }

@@ -372,6 +372,7 @@ model Update {
   metrics     UpdateMetric[]
   signals     Signal[]
   actionItems ActionItem[]
+  documents   Document[]
 
   @@unique([userId, gmailMessageId])
   @@index([userId, receivedAt])
@@ -450,27 +451,47 @@ model ActionItem {
   @@index([companyId])
 }
 
-/// A file in Supabase Storage: signed SAFE, side letter, cap table, K-1.
+/// A file: a signed SAFE, side letter, cap table, wire confirmation or K-1.
+/// Usually an email attachment, occasionally uploaded by hand.
 model Document {
-  id          String       @id @default(uuid())
-  userId      String
-  companyId   String?
-  company     Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  positionId  String?
-  position    Position?    @relation(fields: [positionId], references: [id], onDelete: SetNull)
-  kind        DocumentKind @default(OTHER)
-  title       String
-  /// Path within the private Supabase Storage bucket; signed URLs are minted
-  /// per request, never stored.
-  storagePath String
-  sizeBytes   Int?
-  mimeType    String?
+  id         String       @id @default(uuid())
+  userId     String
+  companyId  String?
+  company    Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  positionId String?
+  position   Position?    @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  /// The email it arrived on, when it came from Gmail.
+  updateId   String?
+  update     Update?      @relation(fields: [updateId], references: [id], onDelete: SetNull)
+  kind       DocumentKind @default(OTHER)
+  title      String
+  mimeType   String?
+  sizeBytes  Int?
+
+  /// Path within the private Storage bucket. Null while only the attachment's
+  /// existence is known: metadata is recorded on ingest, and the bytes are
+  /// fetched separately, so a failed download never loses the fact that a
+  /// signed SAFE exists.
+  storagePath String?
+
+  // -- Gmail provenance ------------------------------------------------------
+  gmailMessageId    String?
+  gmailAttachmentId String?
+
+  // -- Extraction ------------------------------------------------------------
+  /// Set once the document itself has been read for terms.
+  extractedAt DateTime?
+  /// One or two sentences on what the document is and says.
+  summary     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Dedupes re-ingesting the same attachment across syncs.
+  @@unique([userId, gmailMessageId, gmailAttachmentId])
   @@index([userId])
   @@index([companyId])
+  @@index([updateId])
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   extractBody,
+  guessDocumentKind,
+  isWorthReading,
+  listAttachments,
   parseFrom,
   parseMessage,
   stripHtml,
@@ -122,5 +125,80 @@ describe("parseMessage", () => {
     const parsed = parseMessage({ id: "msg-2" });
     expect(parsed.fromAddress).toBe("");
     expect(parsed.text).toBe("");
+  });
+});
+
+describe("listAttachments", () => {
+  const message: GmailMessage = {
+    id: "m1",
+    payload: {
+      mimeType: "multipart/mixed",
+      parts: [
+        { mimeType: "text/plain", body: { data: b64("Signed SAFE attached.") } },
+        {
+          mimeType: "application/pdf",
+          filename: "Acme SAFE countersigned.pdf",
+          body: { attachmentId: "att-1", size: 184_320 },
+        },
+        {
+          mimeType: "image/png",
+          filename: "logo.png",
+          headers: [{ name: "Content-Disposition", value: "inline; filename=logo.png" }],
+          body: { attachmentId: "att-2", size: 4_096 },
+        },
+        {
+          mimeType: "multipart/related",
+          parts: [
+            {
+              mimeType: "application/pdf",
+              filename: "Side Letter.pdf",
+              body: { attachmentId: "att-3", size: 51_200 },
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  it("finds attachments at any depth", () => {
+    const found = listAttachments(message.payload);
+    expect(found.map((a) => a.filename)).toEqual(["Acme SAFE countersigned.pdf", "Side Letter.pdf"]);
+  });
+
+  it("drops inline parts like signature logos", () => {
+    expect(listAttachments(message.payload).some((a) => a.filename === "logo.png")).toBe(false);
+  });
+
+  it("still parses the body alongside attachments", () => {
+    expect(parseMessage(message).text).toBe("Signed SAFE attached.");
+    expect(parseMessage(message).attachments).toHaveLength(2);
+  });
+});
+
+describe("isWorthReading", () => {
+  const pdf = { attachmentId: "a", filename: "safe.pdf", mimeType: "application/pdf", sizeBytes: 1000 };
+
+  it("takes PDFs and skips other types", () => {
+    expect(isWorthReading(pdf)).toBe(true);
+    expect(isWorthReading({ ...pdf, filename: "deck.pptx", mimeType: "application/vnd.ms-powerpoint" })).toBe(false);
+  });
+
+  it("trusts the extension when the type is generic", () => {
+    expect(isWorthReading({ ...pdf, mimeType: "application/octet-stream" })).toBe(true);
+  });
+
+  it("refuses anything oversized", () => {
+    expect(isWorthReading({ ...pdf, sizeBytes: 40 * 1024 * 1024 })).toBe(false);
+  });
+});
+
+describe("guessDocumentKind", () => {
+  it("reads the usual filenames", () => {
+    expect(guessDocumentKind("Acme SAFE countersigned.pdf")).toBe("SAFE");
+    expect(guessDocumentKind("side-letter-pro-rata.pdf")).toBe("SIDE_LETTER");
+    expect(guessDocumentKind("Convertible Note 2024.pdf")).toBe("NOTE");
+    expect(guessDocumentKind("cap_table_post_seed.pdf")).toBe("CAP_TABLE");
+    expect(guessDocumentKind("2025 K-1 Acme LLC.pdf")).toBe("K1");
+    expect(guessDocumentKind("wire receipt.pdf")).toBe("OTHER");
   });
 });

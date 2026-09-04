@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
 import { accessTokenFromRefresh, getMessage, listMessageIds } from "./client";
+import { ingestAttachments } from "./attachments";
 import { AUTO_MATCH_THRESHOLD, matchCompany, type MatchCandidate } from "./match";
 
 export interface SyncResult {
@@ -9,6 +10,7 @@ export interface SyncResult {
   created: number;
   autoMatched: number;
   pending: number;
+  documents: number;
 }
 
 /// Pulls messages matching the account's sync query and stores the new ones as
@@ -43,6 +45,7 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
 
   let created = 0;
   let autoMatched = 0;
+  let documents = 0;
 
   for (const id of newIds) {
     let email;
@@ -58,7 +61,7 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
     const match = matchCompany(email, candidates);
     const confident = match != null && match.confidence >= AUTO_MATCH_THRESHOLD;
 
-    await prisma.update.create({
+    const created_ = await prisma.update.create({
       data: {
         userId,
         companyId: match?.companyId ?? null,
@@ -79,6 +82,19 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
 
     created += 1;
     if (confident) autoMatched += 1;
+
+    // Attachments are where the binding terms live: the email says "signed and
+    // attached", the SAFE says what was signed.
+    if (email.attachments.length > 0) {
+      const result = await ingestAttachments(userId, {
+        accessToken,
+        updateId: created_.id,
+        companyId: match?.companyId ?? null,
+        gmailMessageId: email.gmailMessageId,
+        attachments: email.attachments,
+      });
+      documents += result.stored;
+    }
   }
 
   await prisma.gmailAccount.update({
@@ -88,5 +104,5 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
 
   const pending = await prisma.update.count({ where: { userId, reviewState: "PENDING" } });
 
-  return { fetched: ids.length, created, autoMatched, pending };
+  return { fetched: ids.length, created, autoMatched, pending, documents };
 }

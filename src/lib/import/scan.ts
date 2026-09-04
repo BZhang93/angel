@@ -27,6 +27,7 @@ General rules:
 - Every position needs sourceQuote: the verbatim sentence evidencing it. If you cannot quote the amount, set it null rather than guessing.
 - A cold pitch, a fundraising deck, a newsletter or a rejected deal is not an investment. Return an empty companies array with a one-line skippedReason.
 - Investor updates addressed to existing investors are strong evidence, even when they never restate the amount. Include the company with an empty positions array and say so in notes.
+- A countersigned document listed under Attachments (a SAFE, note or subscription agreement) is strong evidence of an investment even when the covering email is one line. The document's contents are read separately, so do not invent terms from its filename.
 - Report dates in ISO YYYY-MM-DD form.`;
 
 function evidenceText(group: DomainGroup, emails: ScannedEmail[]): string {
@@ -40,6 +41,9 @@ function evidenceText(group: DomainGroup, emails: ScannedEmail[]): string {
         `Date: ${email.receivedAt.toISOString().slice(0, 10)}`,
         `From: ${email.fromName ? `${email.fromName} ` : ""}<${email.fromAddress}>`,
         `Subject: ${email.subject ?? "(none)"}`,
+        email.attachments.length > 0
+          ? `Attachments: ${email.attachments.map((a) => a.filename).join(", ")}`
+          : "Attachments: none",
         "",
         // Bounded per email so one enormous forward cannot crowd out the rest.
         email.text.slice(0, 6000),

@@ -161,3 +161,19 @@ export async function getMessage(accessToken: string, id: string): Promise<Parse
   const message = await gmailGet<GmailMessage>(accessToken, `/messages/${id}?format=full`);
   return parseMessage(message);
 }
+
+/// Attachment bytes. Gmail returns them base64url encoded in JSON rather than
+/// as a binary body, so this decodes to a Buffer. Same throttle and retry path
+/// as every other read.
+export async function getAttachment(
+  accessToken: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<Buffer> {
+  const part = await gmailGet<{ data?: string; size?: number }>(
+    accessToken,
+    `/messages/${messageId}/attachments/${attachmentId}`,
+  );
+  if (!part.data) throw new Error("Gmail returned an attachment with no data.");
+  return Buffer.from(part.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}

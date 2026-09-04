@@ -9,6 +9,9 @@ export interface ScannedEmail {
   subject: string | null;
   receivedAt: Date;
   text: string;
+  /// Filenames only. A countersigned SAFE in the attachment list is evidence of
+  /// an investment even when the covering email says nothing.
+  attachments: { filename: string }[];
 }
 
 export interface DomainGroup {
