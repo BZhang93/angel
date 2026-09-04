@@ -174,6 +174,46 @@ export async function listCompletedEnvelopes(
   return data.envelopes ?? [];
 }
 
+export interface EnvelopeField {
+  name: string;
+  value: string;
+}
+
+/// The values actually typed into an envelope's fields.
+///
+/// Strictly better than reading them back out of the rendered PDF: where a
+/// subscription document has a "Commitment Amount" field, this is the number
+/// itself, with no extraction step and nothing to misread.
+export async function getEnvelopeFormData(
+  accessToken: string,
+  identity: { baseUri: string; accountId: string },
+  envelopeId: string,
+): Promise<EnvelopeField[]> {
+  const data = await apiGet<{
+    prefillFormData?: { formData?: { name?: string; value?: string }[] };
+    recipientFormData?: {
+      name?: string;
+      email?: string;
+      formData?: { name?: string; value?: string }[];
+    }[];
+  }>(accessToken, identity, `/envelopes/${envelopeId}/form_data`);
+
+  const fields: EnvelopeField[] = [];
+  const push = (entries: { name?: string; value?: string }[] | undefined) => {
+    for (const entry of entries ?? []) {
+      const name = entry.name?.trim();
+      const value = entry.value?.trim();
+      // Empty fields are noise; an unnamed one cannot be interpreted.
+      if (name && value) fields.push({ name, value });
+    }
+  };
+
+  push(data.prefillFormData?.formData);
+  for (const recipient of data.recipientFormData ?? []) push(recipient.formData);
+
+  return fields;
+}
+
 /// The combined PDF of every document in an envelope, which is what the terms
 /// extractor wants: one file holding the instrument and its exhibits.
 export async function downloadEnvelopePdf(

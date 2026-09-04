@@ -540,6 +540,9 @@ model Document {
   /// Set when the document came from DocuSign rather than an email. Signed
   /// envelopes are the authoritative copy of an instrument's terms.
   docusignEnvelopeId String?
+  /// Values typed into the envelope's fields, as name/value pairs. Authoritative
+  /// in a way extracted text is not: nobody had to read them off a page.
+  formFields         Json?
   /// Set when the document came from a link in an email rather than an
   /// attachment. Unique per user, so a memo linked from five updates is fetched
   /// once.

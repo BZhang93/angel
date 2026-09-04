@@ -53,13 +53,20 @@ Extract only what the document states.
 - amount is the amount this investor purchased under this document, not the round or SPV total.
 - isExecuted is true only for a signed or countersigned document. An unsigned template or draft is false.
 - Post-money versus pre-money is stated in the SAFE's title or definitions; do not guess it from the year.
-- If the document is not an investment document at all (a newsletter PDF, a deck), set documentKind OTHER, leave the terms null, and say what it is in summary.`;
+- If the document is not an investment document at all (a newsletter PDF, a deck), set documentKind OTHER, leave the terms null, and say what it is in summary.
+- When typed field values are supplied, they were entered into the document rather than read off it: prefer them over the rendered text wherever the two disagree, and quote the field as "Field: <name> = <value>" in sourceQuotes.`;
 
 let client: Anthropic | undefined;
 
 export async function extractDocumentTerms(
   pdf: Buffer,
-  context: { filename: string; companyName?: string | null },
+  context: {
+    filename: string;
+    companyName?: string | null;
+    /// Values typed into the envelope's fields. These outrank the rendered
+    /// page: nobody had to read them off it.
+    formFields?: { name: string; value: string }[];
+  },
 ): Promise<DocumentTerms> {
   if (!aiConfigured()) throw new AiNotConfiguredError();
   client ??= new Anthropic();
@@ -83,6 +90,12 @@ export async function extractDocumentTerms(
             text: [
               `Filename: ${context.filename}`,
               context.companyName ? `Expected company: ${context.companyName}` : null,
+              context.formFields?.length
+                ? [
+                    "Values typed into this envelope's fields (authoritative, prefer these over the rendered page where they conflict):",
+                    ...context.formFields.map((field) => `  ${field.name}: ${field.value}`),
+                  ].join("\n")
+                : null,
               "Extract the terms of this document.",
             ]
               .filter((line) => line !== null)

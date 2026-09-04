@@ -5,9 +5,11 @@ import { attachmentPath, uploadAttachment } from "@/lib/storage";
 import { guessDocumentKind } from "@/lib/gmail/parse";
 import { matchCompanyByContent } from "@/lib/gmail/content-match";
 import type { DocumentKind } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 import {
   accessTokenFromRefresh,
   downloadEnvelopePdf,
+  getEnvelopeFormData,
   listCompletedEnvelopes,
   type DocusignEnvelope,
 } from "./client";
@@ -85,6 +87,14 @@ export async function syncDocusign(
 
     try {
       const pdf = await downloadEnvelopePdf(accessToken, identity, envelope.envelopeId);
+      // Typed field values, where the envelope had any. A missing form_data
+      // response is not a failure: plenty of envelopes are flat documents.
+      const fields = await getEnvelopeFormData(accessToken, identity, envelope.envelopeId).catch(
+        () => [],
+      );
+      // Prisma's Json input needs a plain serialisable value, not a typed array.
+      const formFields: Prisma.InputJsonValue | undefined =
+        fields.length > 0 ? (fields as unknown as Prisma.InputJsonValue) : undefined;
       const path = attachmentPath(
         userId,
         `docusign-${envelope.envelopeId}`,
@@ -104,8 +114,14 @@ export async function syncDocusign(
           mimeType: "application/pdf",
           sizeBytes: pdf.byteLength,
           storagePath: path,
+          formFields,
         },
-        update: { storagePath: path, sizeBytes: pdf.byteLength, companyId },
+        update: {
+          storagePath: path,
+          sizeBytes: pdf.byteLength,
+          companyId,
+          formFields,
+        },
       });
       stored += 1;
     } catch {

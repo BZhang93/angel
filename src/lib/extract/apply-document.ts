@@ -38,6 +38,9 @@ export async function extractPendingDocuments(
       terms = await extractDocumentTerms(bytes, {
         filename: document.title,
         companyName: document.company?.name,
+        formFields: Array.isArray(document.formFields)
+          ? (document.formFields as { name: string; value: string }[])
+          : undefined,
       });
     } catch {
       failed += 1;
