@@ -121,6 +121,18 @@ enum SignalKind {
   MILESTONE
   PERSONNEL_CHANGE
   FUNDRAISE
+  PARTNERSHIP
+}
+
+/// Which way a signal points for the business.
+///
+/// Severity measures urgency, not direction, and the two are independent: a
+/// founder leaving and a founder hire are both a PERSONNEL_CHANGE, and both may
+/// be HIGH. Without this, no trajectory can be read off a company's signals.
+enum SignalDirection {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
 }
 
 enum Severity {
@@ -525,6 +537,9 @@ model Signal {
   update       Update?    @relation(fields: [updateId], references: [id], onDelete: Cascade)
   kind         SignalKind
   severity     Severity   @default(MEDIUM)
+  /// NEUTRAL until an extraction says otherwise, so a row written before this
+  /// existed reads as "no opinion" rather than as good or bad news.
+  direction    SignalDirection @default(NEUTRAL)
   summary      String
   sourceQuote  String?
   confidence   Decimal?   @db.Decimal(4, 3)

@@ -11,6 +11,7 @@ import {
   type Cashflow,
 } from "@/lib/portfolio";
 import { deriveCompanySignals, type DerivedSignal } from "@/lib/signals";
+import { computeTrend, type TrendResult, type TrendSignal } from "@/lib/trend";
 import { mentionsCompany } from "@/lib/gmail/content-match";
 
 // Read models for the UI. This layer does the Prisma work and hands plain
@@ -59,6 +60,8 @@ export interface CompanySummary {
   firstInvestmentAt: Date | null;
   lastUpdateAt: Date | null;
   signals: DerivedSignal[];
+  /// Which way the company is going, derived on read like MOIC.
+  trend: TrendResult;
 }
 
 /// Everything the companies list and the dashboard need, in one query pass.
@@ -73,6 +76,53 @@ export async function getCompanySummaries(
     where: { userId, companyId: null },
     select: { subject: true, rawText: true, receivedAt: true },
   });
+
+  // Metrics and signals for the trend, read in two passes rather than per
+  // company. Both are dated by the email they came from: every signal row in
+  // this database was written the day extraction first ran, so row age says
+  // nothing about when anything happened.
+  const [metricRows, signalRows] = await Promise.all([
+    prisma.updateMetric.findMany({
+      where: {
+        update: { userId, companyId: { not: null } },
+        key: { in: ["ARR", "MRR", "REVENUE", "CUSTOMERS", "GROWTH_RATE"] },
+      },
+      select: { key: true, value: true, update: { select: { companyId: true, receivedAt: true } } },
+    }),
+    prisma.signal.findMany({
+      where: { userId, dismissedAt: null },
+      select: {
+        companyId: true,
+        kind: true,
+        severity: true,
+        direction: true,
+        derived: true,
+        createdAt: true,
+        update: { select: { receivedAt: true } },
+      },
+    }),
+  ]);
+
+  const metricsByCompany = new Map<string, { key: string; value: number; at: Date }[]>();
+  for (const row of metricRows) {
+    const companyId = row.update.companyId!;
+    const list = metricsByCompany.get(companyId) ?? [];
+    list.push({ key: row.key, value: toNumber(row.value), at: row.update.receivedAt });
+    metricsByCompany.set(companyId, list);
+  }
+
+  const signalsByCompany = new Map<string, TrendSignal[]>();
+  for (const row of signalRows) {
+    const list = signalsByCompany.get(row.companyId) ?? [];
+    list.push({
+      kind: row.kind,
+      severity: row.severity,
+      direction: row.direction,
+      derivedKind: row.derived ? row.kind : null,
+      at: row.update?.receivedAt ?? row.createdAt,
+    });
+    signalsByCompany.set(row.companyId, list);
+  }
 
   const companies = await prisma.company.findMany({
     where: { userId },
@@ -134,6 +184,27 @@ export async function getCompanySummaries(
       null,
     );
 
+    const derived = deriveCompanySignals(
+      {
+        lastUpdateAt: lastUpdate?.receivedAt ?? null,
+        unfiledMentions: { count: mentions.length, latest: latestMention },
+        firstInvestmentAt,
+        runwayMonths: runwayMetric ? toNumber(runwayMetric.value) : null,
+        maturityDates: company.positions
+          .filter((position) => !position.convertedIntoId)
+          .map((position) => position.maturityDate),
+        qsbsPositions: company.positions.map((position) => ({
+          investmentDate: position.investmentDate,
+          qsbsEligible: position.qsbsEligible,
+        })),
+        valuations: company.valuations.map((valuation) => ({
+          date: valuation.date,
+          postMoneyValuation: toNullableNumber(valuation.postMoneyValuation),
+        })),
+      },
+      asOf,
+    );
+
     return {
       id: company.id,
       name: company.name,
@@ -167,26 +238,27 @@ export async function getCompanySummaries(
       ],
       firstInvestmentAt,
       lastUpdateAt: lastUpdate?.receivedAt ?? null,
-      signals: deriveCompanySignals(
+      trend: computeTrend(
         {
-          lastUpdateAt: lastUpdate?.receivedAt ?? null,
-          unfiledMentions: { count: mentions.length, latest: latestMention },
-          firstInvestmentAt,
-          runwayMonths: runwayMetric ? toNumber(runwayMetric.value) : null,
-          maturityDates: company.positions
-            .filter((position) => !position.convertedIntoId)
-            .map((position) => position.maturityDate),
-          qsbsPositions: company.positions.map((position) => ({
-            investmentDate: position.investmentDate,
-            qsbsEligible: position.qsbsEligible,
-          })),
-          valuations: company.valuations.map((valuation) => ({
-            date: valuation.date,
-            postMoneyValuation: toNullableNumber(valuation.postMoneyValuation),
-          })),
+          metrics: metricsByCompany.get(company.id) ?? [],
+          signals: [
+            ...(signalsByCompany.get(company.id) ?? []),
+            // Deterministic signals describe the company as of now, so they are
+            // dated now rather than by any email.
+            // A deterministic signal carries its own polarity by kind, so
+            // direction is not consulted for it.
+            ...derived.map((signal) => ({
+              kind: signal.kind,
+              severity: signal.severity,
+              direction: "NEUTRAL",
+              derivedKind: signal.kind,
+              at: asOf,
+            })),
+          ],
         },
         asOf,
       ),
+      signals: derived,
     };
   });
 }

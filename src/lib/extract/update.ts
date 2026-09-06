@@ -6,6 +6,7 @@ const SYSTEM = `You read investor updates that a founder sent to an angel invest
 
 Rules:
 - Only report what the email states. Never infer, never estimate, never fill a gap with a plausible number.
+- Every signal needs a direction as well as a severity. Severity is how urgent it is; direction is whether it is good or bad news. A churned customer, a missed target, a departure or a delay is NEGATIVE. A launch, a signed partnership, a key hire or a raise is POSITIVE. Use PARTNERSHIP for a named commercial partner rather than a generic MILESTONE.
 - Every metric, signal and action item must carry sourceQuote: the verbatim sentence from the email it came from. If you cannot quote it, do not report it.
 - Normalise numbers to absolutes: "$1.2M ARR" becomes 1200000; "18 months of runway" becomes 18.
 - Signals: RISK is anything that could lose the investor money (runway, churn, litigation, a key departure, a missed plan). ASK is something the founder is asking the investor to do. Severity reflects the money at stake, not the founder's tone.

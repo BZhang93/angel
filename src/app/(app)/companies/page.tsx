@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CONTROL_PRIMARY, EmptyState, Pill, SeverityBadge } from "@/components/ui";
+import { CONTROL_PRIMARY, EmptyState, Pill, SeverityBadge, TrendIndicator } from "@/components/ui";
 import { getCompanySummaries } from "@/lib/data/portfolio";
 import { money, multiple, percent, shortDate, titleCase } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
@@ -51,6 +51,12 @@ export default async function CompaniesPage() {
               <th className="px-4 py-2 text-right font-medium">MOIC</th>
               <th className="px-4 py-2 text-right font-medium">IRR</th>
               <th className="px-4 py-2 font-medium">Last Update</th>
+              <th
+                className="cursor-help px-4 py-2 font-medium"
+                title="Reported growth over recent periods, plus what the last 90 days of signals said. Neutral means there is not enough to call."
+              >
+                Trend
+              </th>
               <th className="px-4 py-2 font-medium">Flags</th>
             </tr>
           </thead>
@@ -122,6 +128,17 @@ export default async function CompaniesPage() {
                   </>
                 )}
                 <td className="px-4 py-2 text-muted">{shortDate(company.lastUpdateAt)}</td>
+                <td className="px-4 py-2">
+                  <TrendIndicator
+                    trend={company.trend.trend}
+                    title={
+                      company.trend.evidence
+                        .slice(0, 3)
+                        .map((entry) => entry.label)
+                        .join(" · ") || "Nothing reported recently."
+                    }
+                  />
+                </td>
                 <td className="px-4 py-2">
                   <div className="flex flex-wrap gap-1">
                     {company.signals.slice(0, 2).map((signal, index) => (

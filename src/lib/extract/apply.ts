@@ -60,6 +60,7 @@ export async function applyExtraction(
         updateId,
         kind: signal.kind,
         severity: signal.severity,
+        direction: signal.direction,
         summary: signal.summary,
         sourceQuote: signal.sourceQuote,
         confidence: signal.confidence,

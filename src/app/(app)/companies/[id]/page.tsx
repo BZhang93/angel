@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Card, ControlRow, CONTROL_SECONDARY, Pill, SeverityBadge } from "@/components/ui";
+import {
+  Card,
+  ControlRow,
+  CONTROL_SECONDARY,
+  Pill,
+  SeverityBadge,
+  TrendIndicator,
+} from "@/components/ui";
 import { ActionForm, Checkbox, Field, Select } from "@/components/forms";
 import {
   ACTION_KIND_OPTIONS,
@@ -57,7 +64,10 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">{company.name}</h1>
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h1 className="text-lg font-semibold">{company.name}</h1>
+            {summary && <TrendIndicator trend={summary.trend.trend} />}
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
             {company.website && (
               <a
@@ -129,6 +139,36 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
             </div>
           ))}
         </div>
+      )}
+
+      {summary && (
+        <Card title="Trend">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <TrendIndicator trend={summary.trend.trend} />
+            <span className="text-sm text-muted">
+              {summary.trend.evidence.length === 0
+                ? "Nothing reported recently, so there is no direction to read."
+                : "From reported growth and the last 90 days of signals."}
+            </span>
+          </div>
+          {summary.trend.evidence.length > 0 && (
+            /// Every number in this app traces to what it came from, and a
+            /// derived one has to show its working or it is just an opinion.
+            <ul className="mt-3 space-y-1 text-sm">
+              {summary.trend.evidence.slice(0, 6).map((entry, index) => (
+                <li key={`${entry.label}-${index}`} className="flex items-baseline gap-2">
+                  <span
+                    className={`tabular w-12 shrink-0 text-right ${entry.weight > 0 ? "text-positive" : "text-negative"}`}
+                  >
+                    {entry.weight > 0 ? "+" : ""}
+                    {entry.weight.toFixed(2)}
+                  </span>
+                  <span className="text-muted">{entry.label}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       )}
 
       {summary && summary.signals.length > 0 && (

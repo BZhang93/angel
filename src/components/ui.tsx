@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { TREND_LABEL, type Trend } from "@/lib/trend";
 import type { Severity } from "@/lib/signals";
 
 // Shared presentational pieces. Small on purpose: this app is tables and
@@ -111,5 +112,41 @@ export function EmptyState({
         </Link>
       )}
     </div>
+  );
+}
+
+/// The five-point trend, as a compact glyph and word.
+///
+/// Colour alone would not carry it: the scale has two shades either side of
+/// neutral, and telling "down" from "very down" by hue is exactly the
+/// distinction a red-green colourblind reader loses. The arrow does that work
+/// and the colour reinforces it.
+const TREND_STYLE: Record<Trend, { glyph: string; tone: string }> = {
+  VERY_UP: { glyph: "▲▲", tone: "text-positive" },
+  UP: { glyph: "▲", tone: "text-positive" },
+  NEUTRAL: { glyph: "–", tone: "text-muted" },
+  DOWN: { glyph: "▼", tone: "text-negative" },
+  VERY_DOWN: { glyph: "▼▼", tone: "text-negative" },
+};
+
+export function TrendIndicator({
+  trend,
+  title,
+  showLabel = true,
+}: {
+  trend: Trend;
+  title?: string;
+  showLabel?: boolean;
+}) {
+  const style = TREND_STYLE[trend];
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 whitespace-nowrap text-sm ${style.tone}${title ? " cursor-help" : ""}`}
+      title={title}
+    >
+      <span aria-hidden>{style.glyph}</span>
+      {showLabel ? TREND_LABEL[trend] : <span className="sr-only">{TREND_LABEL[trend]}</span>}
+    </span>
   );
 }

@@ -16,10 +16,13 @@ export const METRIC_KEYS = [
   "GROWTH_RATE",
 ] as const;
 
+export const SIGNAL_DIRECTIONS = ["POSITIVE", "NEGATIVE", "NEUTRAL"] as const;
+
 export const SIGNAL_KINDS = [
   "RISK",
   "ASK",
   "MILESTONE",
+  "PARTNERSHIP",
   "PERSONNEL_CHANGE",
   "FUNDRAISE",
 ] as const;
@@ -81,6 +84,14 @@ export const ExtractionSchema = z.object({
     z.object({
       kind: z.enum(SIGNAL_KINDS),
       severity: z.enum(SEVERITIES),
+      /// Independent of severity, which measures urgency rather than which way
+      /// the news points. A founder leaving and a founder joining are both a
+      /// PERSONNEL_CHANGE and may both be urgent.
+      direction: z
+        .enum(SIGNAL_DIRECTIONS)
+        .describe(
+          "Whether this is good or bad news for the business. A departure, a lost customer, a missed target or a delay is NEGATIVE; a hire, a launch, a signed partnership or a raise is POSITIVE. NEUTRAL when it is genuinely neither, or when the email does not make it clear.",
+        ),
       summary: z.string(),
       sourceQuote: z.string(),
       confidence: z.number().min(0).max(1),

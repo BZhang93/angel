@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { CONTROL_PRIMARY, Card, EmptyState, SeverityBadge, Stat } from "@/components/ui";
+import {
+  CONTROL_PRIMARY,
+  Card,
+  EmptyState,
+  SeverityBadge,
+  Stat,
+  TrendIndicator,
+} from "@/components/ui";
 import {
   concentration,
   getCompanySummaries,
@@ -37,6 +44,13 @@ export default async function DashboardPage() {
       />
     );
   }
+
+  // Only what is actually moving. Six neutral rows of dashes would crowd out
+  // the two companies with something to say, so the rest are a footnote.
+  const moving = summaries
+    .filter((company) => company.trend.trend !== "NEUTRAL")
+    .sort((a, b) => a.trend.score - b.trend.score);
+  const steady = summaries.length - moving.length;
 
   const risks = summaries
     .flatMap((company) => company.signals.map((signal) => ({ company, signal })))
@@ -118,6 +132,41 @@ export default async function DashboardPage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Trending">
+          {moving.length === 0 ? (
+            <p className="py-4 text-sm text-muted">
+              Nothing is moving either way. A company needs reported numbers or recent news before
+              a direction means anything.
+            </p>
+          ) : (
+            <>
+              <ul className="divide-y divide-border">
+                {moving.map(({ id, name, trend }) => (
+                  <li key={id} className="flex items-baseline justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <Link href={`/companies/${id}`} className="text-sm font-medium hover:underline">
+                        {name}
+                      </Link>
+                      <p className="truncate text-sm text-muted">
+                        {trend.evidence
+                          .slice(0, 2)
+                          .map((entry) => entry.label)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                    <TrendIndicator trend={trend.trend} />
+                  </li>
+                ))}
+              </ul>
+              {steady > 0 && (
+                <p className="pt-2 text-sm text-muted">
+                  {steady} other{steady === 1 ? "" : "s"} neutral, for want of recent numbers or news.
+                </p>
+              )}
+            </>
+          )}
+        </Card>
+
         <Card title="Needs Attention">
           {risks.length === 0 ? (
             <p className="py-4 text-sm text-muted">
