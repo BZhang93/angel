@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/session";
 import { extractFromUpdate } from "@/lib/extract/update";
 import { applyExtraction, extractPendingUpdates } from "@/lib/extract/apply";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { extractPendingDocuments } from "@/lib/extract/apply-document";
 import { fetchPendingLinks } from "@/lib/enrich/links";
 import { enrichCompanyProfiles } from "@/lib/enrich/company";
@@ -54,6 +55,63 @@ export async function confirmUpdate(form: FormData): Promise<UpdateActionResult>
   }
 
   revalidatePath("/", "layout");
+}
+
+/// Assigns several pending updates to one company at once.
+///
+/// The queue's shape is why this exists: a syndicate sends eight emails about
+/// one deal and every one of them was a separate company pick. Extraction runs
+/// concurrently under the same ceiling as a sync, because sequentially eight
+/// model calls is a button that looks broken.
+///
+/// Not a FormData action. The checkboxes live inside a group that already
+/// contains a form per row, and forms cannot nest, so selection is held in the
+/// client and passed directly.
+export async function confirmUpdates(
+  updateIds: string[],
+  companyId: string,
+): Promise<UpdateActionResult> {
+  const userId = await requireUserId();
+  if (updateIds.length === 0) return { status: "error", message: "Select an update first." };
+
+  const company = await prisma.company.findFirst({ where: { id: companyId, userId } });
+  if (!company) return { status: "error", message: "Company not found." };
+
+  // Scoped to this user and to what is genuinely still pending, so a stale page
+  // cannot reassign something already dealt with.
+  const updates = await prisma.update.findMany({
+    where: { id: { in: updateIds }, userId, reviewState: "PENDING" },
+  });
+  if (updates.length === 0) return { status: "error", message: "Nothing left to assign." };
+
+  await prisma.update.updateMany({
+    where: { id: { in: updates.map((update) => update.id) }, userId },
+    data: { companyId, reviewState: "CONFIRMED" },
+  });
+
+  const results = await mapWithConcurrency(updates, async (update) => {
+    const extraction = await extractFromUpdate({
+      companyName: company.name,
+      subject: update.subject,
+      receivedAt: update.receivedAt,
+      text: update.rawText,
+    });
+    await applyExtraction(userId, update.id, companyId, extraction, {
+      subject: update.subject,
+      rawText: update.rawText,
+    });
+  });
+
+  // The assignment stands whatever extraction did: a failed read is retried on
+  // the next sync, and saying so beats reporting a clean success.
+  const extracted = results.filter((result) => result.status === "fulfilled").length;
+  const failed = results.length - extracted;
+
+  revalidatePath("/", "layout");
+  return {
+    status: "ok",
+    message: `Assigned ${updates.length} update${updates.length === 1 ? "" : "s"} to ${company.name}, ${extracted} read${failed ? `, ${failed} could not be read and will retry` : ""}.`,
+  };
 }
 
 export async function rejectUpdate(form: FormData): Promise<void> {

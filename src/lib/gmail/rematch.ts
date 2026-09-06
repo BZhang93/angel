@@ -1,6 +1,12 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { AUTO_MATCH_THRESHOLD, bestMatch, matchCompany, type MatchCandidate } from "./match";
+import {
+  AUTO_MATCH_THRESHOLD,
+  bestMatch,
+  matchCompany,
+  SUGGESTION_THRESHOLD,
+  type MatchCandidate,
+} from "./match";
 import { matchCompanyByContent } from "./content-match";
 
 // Re-matching updates that are stuck in the review queue.
@@ -13,6 +19,8 @@ import { matchCompanyByContent } from "./content-match";
 export interface RematchResult {
   considered: number;
   matched: number;
+  /// Left pending, but now carrying the company they probably belong to.
+  suggested: number;
   stillPending: number;
 }
 
@@ -29,7 +37,7 @@ export async function rematchPendingUpdates(userId: string): Promise<RematchResu
   ]);
 
   if (companies.length === 0) {
-    return { considered: pending.length, matched: 0, stillPending: pending.length };
+    return { considered: pending.length, matched: 0, suggested: 0, stillPending: pending.length };
   }
 
   const candidates: MatchCandidate[] = companies.map((company) => ({
@@ -43,6 +51,7 @@ export async function rematchPendingUpdates(userId: string): Promise<RematchResu
   const named = companies.map((company) => ({ companyId: company.id, name: company.name }));
 
   let matched = 0;
+  let suggested = 0;
 
   for (const update of pending) {
     // Both readings, then the stronger one. Not the first that answers: the
@@ -53,7 +62,22 @@ export async function rematchPendingUpdates(userId: string): Promise<RematchResu
       matchCompanyByContent(update.rawText, named, { subject: update.subject }),
     );
 
-    if (!match || match.confidence < AUTO_MATCH_THRESHOLD) continue;
+    if (!match) continue;
+
+    // Too weak to file, strong enough to point at. Recording it leaves the
+    // update in the queue but gives the reviewer a suggestion to accept, and
+    // gives the queue something to group by. Discarding it, as this used to,
+    // meant every pending row arrived blank and the confidence pill the page
+    // renders never had anything to show.
+    if (match.confidence < AUTO_MATCH_THRESHOLD) {
+      if (match.confidence < SUGGESTION_THRESHOLD) continue;
+      await prisma.update.update({
+        where: { id: update.id },
+        data: { companyId: match.companyId, matchConfidence: match.confidence },
+      });
+      suggested += 1;
+      continue;
+    }
 
     await prisma.update.update({
       where: { id: update.id },
@@ -62,5 +86,5 @@ export async function rematchPendingUpdates(userId: string): Promise<RematchResu
     matched += 1;
   }
 
-  return { considered: pending.length, matched, stillPending: pending.length - matched };
+  return { considered: pending.length, matched, suggested, stillPending: pending.length - matched };
 }

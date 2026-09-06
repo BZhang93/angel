@@ -26,6 +26,12 @@ export interface MatchResult {
 /// human in the review queue.
 export const AUTO_MATCH_THRESHOLD = 0.8;
 
+/// Below the auto-file bar but worth showing: the update stays pending and
+/// carries the company as a suggestion, which is what the review queue's
+/// confidence pill has always been for and what lets the queue group itself.
+/// Under this, a guess is noise and the row is better left blank.
+export const SUGGESTION_THRESHOLD = 0.5;
+
 export function domainOf(value: string | null | undefined): string | null {
   if (!value) return null;
   const raw = value.includes("@") ? value.split("@").pop()! : value;

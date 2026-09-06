@@ -130,6 +130,11 @@ memos. The two that do not are explainable rather than broken: Marr Labs keeps i
 which is gated on purpose, and Asendia's filed mail carries no memo link at all. Documents were cleared during a reset; `scripts/reset-derived.mts` does that again if
 needed (dry run by default, `--confirm` to apply).
 
+The review queue holds 34 updates, all scoring zero against every company: they
+are about a deal that was never taken and about unrelated personal transfers.
+The queue groups by suggested company and confirms a group at once, which is
+inert while nothing carries a suggestion and matters from the next deal on.
+
 Bravi is the one position flagged for review, correctly: its wire instructions billed $425 including
 a $250 admin fee waived for members, and $175 was wired. The flag names the schedule, not the bank.
 
