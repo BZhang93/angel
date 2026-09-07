@@ -97,6 +97,18 @@ export const ExtractionSchema = z.object({
       confidence: z.number().min(0).max(1),
     }),
   ),
+  /// A syndicate saying the money is in, with none of a bank confirmation's
+  /// structure. "All wires received" carries no amount, beneficiary or
+  /// reference, so it produces no Payment, and a company funded this way kept
+  /// its wire reminder open forever.
+  fundingComplete: z
+    .object({
+      sourceQuote: z.string().describe("The sentence saying the funding is done."),
+    })
+    .nullable()
+    .describe(
+      "Set only when the email states that funding, wiring or the round is COMPLETE for this company: 'all wires received', 'the SPV is funded', 'we have wired the investment'. A deadline, a request to wire, a discussion of a refund, or a partial update is not this. Null otherwise.",
+    ),
   actionItems: z.array(
     z.object({
       kind: z.enum(ACTION_KINDS),

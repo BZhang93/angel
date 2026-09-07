@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveOnPayment, type OpenAction } from "./auto-resolve";
+import {
+  resolveAcrossPayments,
+  resolveOnFundingComplete,
+  resolveOnPayment,
+  type OpenAction,
+} from "./auto-resolve";
 
 const base: OpenAction = {
   id: "a",
@@ -118,5 +123,92 @@ describe("resolveOnPayment: thread", () => {
 
     expect(resolved).toHaveLength(1);
     expect(resolved[0]!.rule).toBe("AMOUNT");
+  });
+});
+
+describe("resolveOnFundingComplete", () => {
+  const event = { at: new Date("2026-06-29T00:00:00Z"), threadId: "spv-thread" };
+
+  it("closes a payment due when the syndicate says the wires are in", () => {
+    // Marr Labs has no Payment row at all: the only evidence is a status email
+    // reading "All wires received". Every rule that needs a bank record is
+    // blind to it, so its reminder stayed open for months.
+    const owed = { ...base, sourceAt: null, threadId: null };
+    const [resolved] = resolveOnFundingComplete([owed], event);
+
+    expect(resolved?.rule).toBe("FUNDING_COMPLETE");
+    expect(resolved?.note).toBe(
+      "Closed automatically: the syndicate confirmed the funding was completed.",
+    );
+  });
+
+  it("closes a reminder of any kind raised in the same thread", () => {
+    const sign = { ...base, id: "sign", kind: "CONSENT", amount: null, threadId: "spv-thread" };
+    expect(resolveOnFundingComplete([sign], event)).toHaveLength(1);
+  });
+
+  it("leaves an unrelated reminder alone, however broad its kind", () => {
+    // A reminder to amplify a fundraise announcement is not settled by a wire.
+    const unrelated: OpenAction = {
+      id: "amplify",
+      kind: "FOLLOW_UP",
+      amount: null,
+      dueDate: null,
+      createdAt: new Date("2026-06-01"),
+      threadId: "other-thread",
+      sourceAt: new Date("2026-06-01"),
+    };
+
+    expect(resolveOnFundingComplete([unrelated], event)).toEqual([]);
+  });
+
+  it("cannot settle an obligation raised after it", () => {
+    const later = { ...base, sourceAt: new Date("2026-08-01"), threadId: null };
+    expect(resolveOnFundingComplete([later], event)).toEqual([]);
+  });
+});
+
+describe("resolveAcrossPayments", () => {
+  it("settles a reminder against a payment recorded long before it existed", () => {
+    // The bug this ticket is for. Zaqa's payment was recorded nineteen hours
+    // before the reminder it settles, because the reminder came from an email
+    // still unfiled at the time. Resolution ran once, from the payment, and
+    // never looked again.
+    const paid = {
+      amount: 1099,
+      valueDate: new Date("2026-01-20T00:00:00Z"),
+      threadIds: [] as string[],
+    };
+    const owed = { ...base, amount: 1099, dueDate: new Date("2026-01-19T00:00:00Z") };
+
+    const resolved = resolveAcrossPayments([owed], [paid]);
+
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]!.rule).toBe("AMOUNT");
+  });
+
+  it("lets two equal wires settle two reminders, never the same one twice", () => {
+    const first = { ...base, id: "first", dueDate: new Date("2026-01-01") };
+    const second = { ...base, id: "second", dueDate: new Date("2026-06-01") };
+    const wire = { amount: 2000, valueDate: new Date("2026-01-05"), threadIds: [] as string[] };
+
+    const resolved = resolveAcrossPayments(
+      [first, second],
+      [wire, { ...wire, valueDate: new Date("2026-06-05") }],
+    );
+
+    expect(resolved.map((entry) => entry.id).sort()).toEqual(["first", "second"]);
+  });
+
+  it("does not invent a second closure from one wire", () => {
+    const first = { ...base, id: "first", dueDate: new Date("2026-01-01") };
+    const second = { ...base, id: "second", dueDate: new Date("2026-06-01") };
+    const wire = { amount: 2000, valueDate: new Date("2026-01-05"), threadIds: [] as string[] };
+
+    expect(resolveAcrossPayments([first, second], [wire])).toHaveLength(1);
+  });
+
+  it("closes nothing when there are no payments", () => {
+    expect(resolveAcrossPayments([base], [])).toEqual([]);
   });
 });

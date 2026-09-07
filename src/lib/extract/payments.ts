@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { matchCompanyByContent } from "@/lib/gmail/content-match";
 import { reconcilePayment, type RecordedPosition } from "@/lib/reconcile";
 import { recordClaim } from "@/lib/claims";
-import { resolveOnPayment, type OpenAction } from "@/lib/actions/auto-resolve";
+import { settleCompanyActions } from "@/lib/actions/settle";
 import type { Extraction } from "./schema";
 
 // Turning an extracted bank transfer into a reconciled Payment.
@@ -172,91 +172,8 @@ export async function recordPayment(
   // decided in lib/actions/auto-resolve.ts, on the money and on thread
   // identity, rather than by looking for the word "wire" in a title.
   if (state === "CONFIRMED" && companyId) {
-    await closeSettledActions(userId, companyId, {
-      amount: input.payment.amount,
-      valueDate,
-      updateId: input.updateId,
-      positionId: "positionId" in verdict ? verdict.positionId : null,
-    });
+    await settleCompanyActions(userId, companyId);
   }
 
   return { recorded: true, state };
-}
-
-/// Applies the auto-resolve rules and writes the outcome, keeping the note that
-/// says why each item closed. A silently emptied task list is worse than a full
-/// one: the user cannot tell a finished obligation from a lost one.
-async function closeSettledActions(
-  userId: string,
-  companyId: string,
-  payment: { amount: number; valueDate: Date; updateId: string; positionId: string | null },
-): Promise<void> {
-  // Two correspondences settle here. The bank's, which the transfer was read
-  // from, and the syndicate's wire-instructions thread, which is where the
-  // reminders actually live: sign the agreement, send the commitment plus fees.
-  // The wire-instruction claim recorded against this position is what links
-  // them, and it already carries the update it came from.
-  const [source, wireInstruction] = await Promise.all([
-    prisma.update.findUnique({
-      where: { id: payment.updateId },
-      select: { gmailThreadId: true },
-    }),
-    payment.positionId
-      ? prisma.amountClaim.findFirst({
-          where: { userId, positionId: payment.positionId, source: "WIRE_INSTRUCTION" },
-          select: { updateId: true },
-        })
-      : null,
-  ]);
-
-  const wireThread = wireInstruction?.updateId
-    ? await prisma.update.findUnique({
-        where: { id: wireInstruction.updateId },
-        select: { gmailThreadId: true },
-      })
-    : null;
-
-  const open = await prisma.actionItem.findMany({
-    where: { userId, companyId, state: "OPEN" },
-    select: {
-      id: true,
-      kind: true,
-      amount: true,
-      dueDate: true,
-      createdAt: true,
-      detail: true,
-      update: { select: { gmailThreadId: true } },
-    },
-  });
-
-  const actions: OpenAction[] = open.map((item) => ({
-    id: item.id,
-    kind: item.kind,
-    amount: item.amount == null ? null : Number(item.amount.toString()),
-    dueDate: item.dueDate,
-    createdAt: item.createdAt,
-    threadId: item.update?.gmailThreadId ?? null,
-  }));
-
-  const resolutions = resolveOnPayment(actions, {
-    amount: payment.amount,
-    valueDate: payment.valueDate,
-    threadIds: [source?.gmailThreadId, wireThread?.gmailThreadId].filter(
-      (thread): thread is string => !!thread,
-    ),
-  });
-
-  const detailById = new Map(open.map((item) => [item.id, item.detail]));
-
-  for (const resolution of resolutions) {
-    const existing = detailById.get(resolution.id);
-    await prisma.actionItem.update({
-      where: { id: resolution.id },
-      data: {
-        state: "DONE",
-        completedAt: new Date(),
-        detail: existing ? `${existing}\n\n${resolution.note}` : resolution.note,
-      },
-    });
-  }
 }

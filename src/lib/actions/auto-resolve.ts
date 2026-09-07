@@ -21,6 +21,10 @@ export interface OpenAction {
   createdAt: Date;
   /// The thread of the email that raised it, when it came from one.
   threadId: string | null;
+  /// The date of the email that raised it, which is not createdAt: an item
+  /// written by a backfill carries today's row age and a months-old source.
+  /// Null for an item the importer raised, which has no email behind it.
+  sourceAt?: Date | null;
 }
 
 export interface ConfirmedPayment {
@@ -39,7 +43,7 @@ export interface ConfirmedPayment {
 
 export interface Resolution {
   id: string;
-  rule: "AMOUNT" | "THREAD";
+  rule: "AMOUNT" | "THREAD" | "FUNDING_COMPLETE";
   /// Appended to the item's detail, so a closed task still explains itself.
   note: string;
 }
@@ -123,4 +127,66 @@ export function resolveOnPayment(actions: OpenAction[], payment: ConfirmedPaymen
   }
 
   return [...resolutions.values()];
+}
+
+/// Every confirmed payment for a company against everything still open.
+///
+/// Oldest first, withdrawing each settled item before the next payment is
+/// considered, so "one transfer discharges one obligation" holds across a
+/// sweep and not only within a single payment. Two wires of the same size to
+/// the same company settle two reminders, never the same one twice.
+export function resolveAcrossPayments(
+  actions: OpenAction[],
+  payments: ConfirmedPayment[],
+): Resolution[] {
+  const ordered = [...payments].sort((a, b) => a.valueDate.getTime() - b.valueDate.getTime());
+  const resolutions: Resolution[] = [];
+  let open = actions;
+
+  for (const payment of ordered) {
+    if (open.length === 0) break;
+    const settled = resolveOnPayment(open, payment);
+    resolutions.push(...settled);
+    const closed = new Set(settled.map((entry) => entry.id));
+    open = open.filter((action) => !closed.has(action.id));
+  }
+
+  return resolutions;
+}
+
+/// A syndicate stating that funding is done, with no bank record behind it.
+///
+/// "All wires received" is genuine proof the money moved, but it is a status
+/// email rather than a bank confirmation: no amount, no beneficiary, no
+/// reference, so it produces no Payment and the money-and-thread rules above
+/// can never see it. A company funded this way kept its reminder open forever.
+export interface FundingComplete {
+  /// The date of the email that said so.
+  at: Date;
+  threadId: string | null;
+}
+
+/// What a stated funding completion closes.
+///
+/// Payment obligations for the company, whatever their amount: "all wires
+/// received" is a statement about the lot, not about one figure. Anything else
+/// only in the same thread, because a FOLLOW_UP is a broad kind and a reminder
+/// to amplify a fundraise announcement is not settled by a wire arriving.
+///
+/// An obligation raised by a LATER email survives: the announcement cannot
+/// speak to something that had not happened yet. Items with no email behind
+/// them, which is how the importer raises them, are always in scope.
+export function resolveOnFundingComplete(
+  actions: OpenAction[],
+  event: FundingComplete,
+): Resolution[] {
+  const note = "Closed automatically: the syndicate confirmed the funding was completed.";
+
+  return actions
+    .filter((action) => {
+      if (action.sourceAt && action.sourceAt.getTime() > event.at.getTime()) return false;
+      if (action.kind === "PAYMENT_DUE") return true;
+      return event.threadId != null && action.threadId === event.threadId;
+    })
+    .map((action) => ({ id: action.id, rule: "FUNDING_COMPLETE" as const, note }));
 }

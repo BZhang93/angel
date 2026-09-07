@@ -5,6 +5,7 @@ import { mapWithConcurrency } from "@/lib/concurrency";
 import { recordPayment } from "./payments";
 import type { Extraction } from "./schema";
 import { parseWireTable } from "@/lib/import/wire-table";
+import { settleCompanyActions, settleOnFundingComplete } from "@/lib/actions/settle";
 
 // Writing an extraction back to the database.
 //
@@ -93,6 +94,10 @@ export async function applyExtraction(
   // A bank transfer is independent evidence that money moved, so it is
   // reconciled against what the portfolio says was invested.
   if (extraction.payment && context) {
+    // A re-read refreshes this update's payment rather than adding a second
+    // one, matching how every other extracted row behaves. Without it,
+    // re-extracting an email duplicated the transfer it describes.
+    await prisma.payment.deleteMany({ where: { userId, updateId } });
     await recordPayment(userId, {
       updateId,
       companyId,
@@ -101,6 +106,39 @@ export async function applyExtraction(
       payment: extraction.payment,
     });
   }
+
+  // A syndicate stating the money is in closes what it settles, with no bank
+  // record involved.
+  if (extraction.fundingComplete) {
+    const [source, account] = await Promise.all([
+      prisma.update.findUnique({
+        where: { id: updateId },
+        select: { gmailThreadId: true, receivedAt: true, fromAddress: true },
+      }),
+      prisma.gmailAccount.findUnique({ where: { userId }, select: { emailAddress: true } }),
+    ]);
+
+    // Only somebody else can tell you your money arrived. The reader's own mail
+    // is full of sentences that read like confirmation and are not: this fired
+    // on a reply of theirs giving bank details for a possible refund, which
+    // would have closed a wire reminder on the strength of a discussion about
+    // getting the money back.
+    const fromReader =
+      !!account &&
+      source?.fromAddress.toLowerCase() === account.emailAddress.toLowerCase();
+
+    if (source && !fromReader) {
+      await settleOnFundingComplete(userId, companyId, {
+        at: source.receivedAt,
+        threadId: source.gmailThreadId,
+      });
+    }
+  }
+
+  // Resolution runs from both ends. A reminder extracted now may be settled by
+  // a payment recorded long ago: Zaqa's was, nineteen hours earlier, and the
+  // one-shot version missed it permanently.
+  await settleCompanyActions(userId, companyId);
 
   // A completed DocuSign envelope proves execution, not payment. It fills an
   // empty investment date and marks the instrument as signed, nothing more.
