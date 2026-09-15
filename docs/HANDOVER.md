@@ -120,6 +120,19 @@ plans, and Go-Live reports "these accounts don't support API integrations". The 
 same wall, since it calls the same APIs. Signed PDFs are uploaded by hand instead and read by the
 same extractor. Leave the integration in place behind its config.
 
+## Environments
+
+One Supabase project, `wdtxfeciuofzyuyzzhdx`, and the local `.env` is the development
+environment. There is no staging database and no Vercel environment configured yet.
+
+Branches do not select a database, env vars do, so a migration run locally is already applied
+to the only database there is. Every migration so far has been additive (a new enum value, a
+nullable column, a column with a default), which is what makes that safe; a destructive one
+would have no untouched copy to fall back to.
+
+Before the app takes anyone else's data, create a second Supabase project for production
+rather than pointing Vercel at this one.
+
 ## Current data state
 
 Seven companies, all held through Viaka, each with one position and amounts traced to a quote from
