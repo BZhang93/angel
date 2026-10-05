@@ -94,18 +94,75 @@ const QUOTE_MARKERS = [
   /^From: .+$/m,
 ];
 
+/// A forward opens with this line and then a header block. The `From:` in that
+/// block looks exactly like the top of Outlook reply history, so without this
+/// the quote markers below cut at character 39 and discard the entire payload.
+/// Investors forward syndicate mail constantly, so the forwarded message is
+/// usually the whole point of the email.
+const FORWARD_DELIMITER = /^\s*-{3,}\s*Forwarded message\s*-{3,}\s*$/im;
+const FORWARD_HEADER = /^(?:from|to|cc|bcc|date|sent|subject|reply-to):/i;
+
+/// Advances past a forward's header block so stripping resumes at the content.
+/// Loops because a forwarded forward nests the blocks, and stops as soon as the
+/// text no longer opens with one, which leaves genuine reply history to be cut
+/// by the markers as before.
+function skipForwardHeaders(text: string): string {
+  let rest = text;
+
+  for (;;) {
+    const match = FORWARD_DELIMITER.exec(rest);
+    // Only a delimiter at the top is this email's own forward. One further down
+    // belongs to quoted history and is left for the markers.
+    if (!match || rest.slice(0, match.index).trim() !== "") return rest;
+
+    const lines = rest.slice(match.index + match[0].length).split("\n");
+    let i = 0;
+    let sawHeader = false;
+
+    while (i < lines.length) {
+      const line = lines[i]!;
+      const blank = line.trim() === "";
+      // A long recipient list wraps onto an indented line; that continuation is
+      // only a header while we are still inside the block.
+      const continuation = sawHeader && /^\s+\S/.test(line);
+      if (FORWARD_HEADER.test(line.trim())) sawHeader = true;
+      else if (!blank && !continuation) break;
+      i += 1;
+    }
+
+    // No header block means this was not a forward preamble after all.
+    if (!sawHeader) return rest;
+    rest = lines.slice(i).join("\n");
+  }
+}
+
 /// Drops quoted reply history and trailing signature blocks. Extraction quality
 /// falls off sharply when last quarter's numbers are still in the text.
 export function stripQuotedReplies(text: string): string {
-  let cut = text.length;
+  const forwarded = skipForwardHeaders(text);
+
+  let cut = forwarded.length;
   for (const marker of QUOTE_MARKERS) {
-    const match = marker.exec(text);
+    const match = marker.exec(forwarded);
     if (match && match.index < cut) cut = match.index;
   }
 
-  const trimmed = text.slice(0, cut);
+  const trimmed = forwarded.slice(0, cut);
   const signature = trimmed.search(/^--\s*$/m);
   return (signature >= 0 ? trimmed.slice(0, signature) : trimmed).trim();
+}
+
+/// A body long enough that losing almost all of it means the stripper cut too
+/// much, not that the sender was terse. Five months of Saile updates were
+/// stored as the 38-character forward delimiter and nothing flagged it, because
+/// a short string is a perfectly valid body. Comparing against the pre-strip
+/// length is what separates our mistake from a one-line reply.
+const TRUNCATION_MIN_RAW = 1000;
+const TRUNCATION_KEPT_RATIO = 0.1;
+
+export function looksTruncated(text: string, rawLength: number): boolean {
+  if (rawLength < TRUNCATION_MIN_RAW) return false;
+  return text.length < rawLength * TRUNCATION_KEPT_RATIO;
 }
 
 // Hosts whose links carry no information about an investment: click trackers,
@@ -257,6 +314,10 @@ export interface ParsedEmail {
   fromName: string | null;
   subject: string | null;
   text: string;
+  /// True when stripping removed nearly all of a substantial body, so `text`
+  /// cannot be trusted to be what the sender wrote. The sync marks the row
+  /// instead of filing it as a healthy update.
+  truncated: boolean;
   attachments: EmailAttachment[];
   links: string[];
 }
@@ -280,6 +341,9 @@ export function parseMessage(message: GmailMessage): ParsedEmail {
       ? new Date(dateHeader)
       : new Date();
 
+  const body = extractBody(message.payload);
+  const text = stripQuotedReplies(body);
+
   return {
     gmailMessageId: message.id,
     gmailThreadId: message.threadId ?? null,
@@ -287,7 +351,8 @@ export function parseMessage(message: GmailMessage): ParsedEmail {
     fromAddress: from.address,
     fromName: from.name,
     subject: header(message, "Subject"),
-    text: stripQuotedReplies(extractBody(message.payload)),
+    text,
+    truncated: looksTruncated(text, body.length),
     attachments: listAttachments(message.payload),
     links: extractLinks(rawBodyFor(message.payload)),
   };

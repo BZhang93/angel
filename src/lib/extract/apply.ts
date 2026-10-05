@@ -89,6 +89,24 @@ export async function applyExtraction(
       where: { id: updateId },
       data: { summary: extraction.summary, extractedAt: new Date() },
     });
+
+    // An extraction that found nothing used to look exactly like a company
+    // having a quiet month. Recording it makes a parsing failure visible, so
+    // five months of empty updates cannot read as five months of signal. The
+    // summary is deliberately not counted: a model will write one for an empty
+    // body too.
+    const produced =
+      extraction.metrics.length > 0 ||
+      extraction.signals.length > 0 ||
+      extraction.actionItems.length > 0 ||
+      extraction.payment != null;
+
+    // A truncated body is the more specific diagnosis and points at a re-fetch,
+    // so it is left in place rather than overwritten by its own consequence.
+    await tx.update.updateMany({
+      where: { id: updateId, ingestIssue: produced ? "NOTHING_EXTRACTED" : null },
+      data: { ingestIssue: produced ? null : "NOTHING_EXTRACTED" },
+    });
   });
 
   // A bank transfer is independent evidence that money moved, so it is

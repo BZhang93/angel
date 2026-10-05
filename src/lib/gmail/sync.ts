@@ -70,7 +70,12 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
         { subject: email.subject },
       ),
     );
-    const confident = match != null && match.confidence >= AUTO_MATCH_THRESHOLD;
+    // A truncated body still has its subject line, and the subject is often
+    // enough to match a company with high confidence. Confirming on that alone
+    // would file a content-free row as a healthy update, so the match is kept
+    // and the row is held for review.
+    const confident =
+      match != null && match.confidence >= AUTO_MATCH_THRESHOLD && !email.truncated;
 
     const created_ = await prisma.update.create({
       data: {
@@ -83,6 +88,7 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
         fromName: email.fromName,
         subject: email.subject,
         rawText: email.text,
+        ingestIssue: email.truncated ? "TRUNCATED_BODY" : null,
         matchConfidence: match?.confidence ?? null,
         // Only a certain match is confirmed outright. Everything else waits for
         // a human, which is what keeps a mis-filed update from silently

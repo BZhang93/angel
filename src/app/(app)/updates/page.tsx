@@ -1,6 +1,7 @@
 import { Card, EmptyState, Pill } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { shortDate } from "@/lib/format";
+import { ingestIssueNotice } from "@/lib/ingest-issue";
 import { groupPendingUpdates } from "@/lib/review-queue";
 import { requireUserId } from "@/lib/session";
 import { ReviewGroup } from "./review-group";
@@ -69,6 +70,14 @@ export default async function UpdatesPage() {
                       {update.fromAddress} · {shortDate(update.receivedAt)}
                     </span>
                   </div>
+                  {update.ingestIssue != null && (
+                    <p className="mt-2 rounded border border-border bg-surface px-2 py-1.5 text-xs text-muted">
+                      <span className="font-medium text-foreground">
+                        {ingestIssueNotice(update.ingestIssue).label}.
+                      </span>{" "}
+                      {ingestIssueNotice(update.ingestIssue).detail}
+                    </p>
+                  )}
                   {update.matchConfidence != null && (
                     <div className="mt-1">
                       <Pill>

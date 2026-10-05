@@ -101,6 +101,19 @@ enum ReviewState {
   REJECTED
 }
 
+/// Why an update carries no usable content. Null is the healthy case. Without
+/// this an update that yielded nothing is indistinguishable from a quiet month,
+/// which is how five months of forwarded updates were stored as a bare
+/// delimiter line without anything noticing.
+enum IngestIssue {
+  /// Quoted-reply stripping removed nearly all of a substantial body, so the
+  /// stored text is not what the sender wrote. Needs a re-fetch, not review.
+  TRUNCATED_BODY
+  /// Extraction ran cleanly and produced no signals, metrics, money or
+  /// documents. Sometimes true of the email, sometimes a parsing failure.
+  NOTHING_EXTRACTED
+}
+
 /// Metrics worth trending. Deliberately a closed set: free-form keys make
 /// charts impossible.
 enum MetricKey {
@@ -485,6 +498,9 @@ model Update {
   reviewState     ReviewState @default(PENDING)
   /// Null until the extraction pass has run on this update.
   extractedAt     DateTime?
+  /// Null when the update is healthy. Set by the sync when the body looks
+  /// truncated, and by extraction when it finishes empty-handed.
+  ingestIssue     IngestIssue?
   /// When the import scan last read this email looking for companies. Set once
   /// a batch containing it completes, so a rescan only pays to read what is
   /// new: the expensive half of a scan is the model, not the fetch.

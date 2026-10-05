@@ -20,6 +20,7 @@ import {
 } from "@/lib/enums";
 import { getCompanyDetail, getCompanySummaries } from "@/lib/data/portfolio";
 import { money, multiple, percent, shortDate, titleCase } from "@/lib/format";
+import { ingestIssueNotice } from "@/lib/ingest-issue";
 import { requireUserId } from "@/lib/session";
 import { signedUrl } from "@/lib/storage";
 import { ScanUpdatesButton } from "../../updates/scan-updates-button";
@@ -552,6 +553,14 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                   <span className="text-xs text-muted">{shortDate(update.receivedAt)}</span>
                 </div>
                 {update.summary && <p className="mt-1 text-sm text-muted">{update.summary}</p>}
+                {update.ingestIssue != null && (
+                  <p className="mt-1.5 rounded border border-border px-2 py-1.5 text-xs text-muted">
+                    <span className="font-medium text-foreground">
+                      {ingestIssueNotice(update.ingestIssue).label}.
+                    </span>{" "}
+                    {ingestIssueNotice(update.ingestIssue).detail}
+                  </p>
+                )}
                 {update.links.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
                     {update.links.slice(0, 6).map((link) => (

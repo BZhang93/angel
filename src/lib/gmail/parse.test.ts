@@ -6,6 +6,7 @@ import {
   isWorthReading,
   listAttachments,
   parseFrom,
+  looksTruncated,
   parseMessage,
   stripHtml,
   stripQuotedReplies,
@@ -79,13 +80,97 @@ describe("stripQuotedReplies", () => {
     expect(stripQuotedReplies(text)).toBe("Q3 update: ARR $1.2M.");
   });
 
-  it("drops a forwarded header block and a signature", () => {
+  it("drops a trailing signature", () => {
     const text = "Latest numbers below.\n\n--\nJane\nCEO, Acme";
     expect(stripQuotedReplies(text)).toBe("Latest numbers below.");
   });
 
+  // This is the shape that cost five months of Saile updates: the `From:` in a
+  // forward's header block matched the reply-history marker, so everything
+  // after character 39 was discarded and the row stored the delimiter alone.
+  it("keeps the content of a forwarded message", () => {
+    const text = [
+      "---------- Forwarded message ---------",
+      "From: Jane Founder <jane@acme.com>",
+      "Date: Mon, 31 Aug 2026 at 09:14",
+      "Subject: Acme - August 2026 Updates",
+      "To: Syndicate <deals@viaka.net>",
+      "",
+      "ARR crossed $1.2M this month.",
+      "We closed the Series A extension.",
+    ].join("\n");
+
+    expect(stripQuotedReplies(text)).toBe(
+      "ARR crossed $1.2M this month.\nWe closed the Series A extension.",
+    );
+  });
+
+  it("keeps forwarded content when the recipient list wraps", () => {
+    const text = [
+      "---------- Forwarded message ---------",
+      "From: Jane Founder <jane@acme.com>",
+      "To: Syndicate <deals@viaka.net>,",
+      "\tAngels <angels@viaka.net>",
+      "",
+      "ARR crossed $1.2M this month.",
+    ].join("\n");
+
+    expect(stripQuotedReplies(text)).toBe("ARR crossed $1.2M this month.");
+  });
+
+  it("unwraps a forwarded forward", () => {
+    const text = [
+      "---------- Forwarded message ---------",
+      "From: Syndicate <deals@viaka.net>",
+      "Subject: Fwd: Acme - August 2026 Updates",
+      "",
+      "---------- Forwarded message ---------",
+      "From: Jane Founder <jane@acme.com>",
+      "Subject: Acme - August 2026 Updates",
+      "",
+      "ARR crossed $1.2M this month.",
+    ].join("\n");
+
+    expect(stripQuotedReplies(text)).toBe("ARR crossed $1.2M this month.");
+  });
+
+  it("still cuts reply history that follows forwarded content", () => {
+    const text = [
+      "---------- Forwarded message ---------",
+      "From: Jane Founder <jane@acme.com>",
+      "",
+      "ARR crossed $1.2M this month.",
+      "",
+      "On Mon, Jul 1, 2026, Bryan wrote:",
+      "> How is it going?",
+    ].join("\n");
+
+    expect(stripQuotedReplies(text)).toBe("ARR crossed $1.2M this month.");
+  });
+
+  it("leaves a bare From: block cutting as reply history", () => {
+    const text = "No forward delimiter here.\n\nFrom: Bryan\nSent: earlier\nLast quarter: $900K";
+    expect(stripQuotedReplies(text)).toBe("No forward delimiter here.");
+  });
+
   it("leaves a clean email untouched", () => {
     expect(stripQuotedReplies("Short and clean.")).toBe("Short and clean.");
+  });
+});
+
+describe("looksTruncated", () => {
+  const long = "x".repeat(2000);
+
+  it("flags a substantial body stripped down to a delimiter", () => {
+    expect(looksTruncated("---------- Forwarded message ---------", long.length)).toBe(true);
+  });
+
+  it("does not flag a genuinely terse reply", () => {
+    expect(looksTruncated("Sounds good, wired today.", 40)).toBe(false);
+  });
+
+  it("does not flag an ordinary trim of quoted history", () => {
+    expect(looksTruncated("y".repeat(900), 2000)).toBe(false);
   });
 });
 
