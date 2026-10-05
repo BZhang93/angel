@@ -5,7 +5,10 @@ describe("ingestIssueNotice", () => {
   it("treats a truncated body as ours to fix", () => {
     const notice = ingestIssueNotice("TRUNCATED_BODY");
     expect(notice.actionable).toBe(true);
-    expect(notice.detail).toContain("sync");
+    // Not the sync: it deduplicates on message id and will never revisit a row
+    // it has already stored.
+    expect(notice.detail).not.toContain("sync");
+    expect(notice.detail).toContain("Gmail");
   });
 
   it("does not blame the sender for an empty extraction", () => {

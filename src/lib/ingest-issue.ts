@@ -19,7 +19,7 @@ export function ingestIssueNotice(issue: IngestIssueKind): IngestIssueNotice {
     return {
       label: "Body not read",
       detail:
-        "Almost all of this email was lost when it was stored, so what you see is not what was sent. Re-run the sync to read it again.",
+        "Almost all of this email was lost when it was stored, so what you see is not what was sent. The original is still in Gmail and can be read again.",
       actionable: true,
     };
   }
