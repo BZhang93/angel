@@ -14,12 +14,53 @@ in this codebase have come from breaking one of them, not from writing broken co
 - **Stack:** Next.js 16 App Router, Prisma 7, Supabase Postgres + Auth + Storage, Claude for
   extraction, Vercel (not yet deployed).
 
+## Next steps
+
+Ordered, because the first item blocks the two after it. Last revised 2026-10-04.
+
+1. **Reconnect Gmail. This one needs a human.** Google rejects the stored refresh token with a 400
+   from its token endpoint. `decryptSecret` succeeds before the request goes out, so
+   `APP_ENCRYPTION_KEY` is intact and the token itself is dead; the likely cause is the seven-day
+   Testing-mode expiry described under External services. Reconnect in `/settings`, and publish the
+   consent screen or this returns every week. Note that nothing has synced since 2026-09-04, so the
+   scheduled sync has most likely been failing silently for a month. A sync that cannot
+   authenticate should be loud and currently is not, which is worth fixing in the same pass.
+
+2. **Recover the 21 lost bodies.** Run
+   `NODE_OPTIONS="--conditions=react-server" pnpm exec tsx scripts/reparse-truncated.mts`.
+   Gmail calls only, no LLM, so it costs nothing. Each repaired row has `extractedAt` cleared, so
+   the normal extraction pass picks it up afterwards; that pass does cost tokens. Watch the first
+   one rather than running all 21 blind. **Vessel is the priority:** nine of its monthly updates
+   were stored empty, so it has effectively never been read and its sector, trend and signals are
+   built on nothing. Then Saile (5), Bravi (4), Zaqa AI (1).
+
+3. **Sync, to pull the unread month.** Only once Gmail authenticates again. A September Saile update
+   is the known example, and there is a month of mail behind it.
+
+4. **BRA-214, multi-user.** The cron calls `findFirst({ autoSync: true })` and therefore syncs one
+   arbitrary user; it needs `findMany` and a loop. Also a disposable-email blocklist in `signup()`
+   and a cross-tenant isolation integration test. Database-level RLS is deliberately deferred: see the
+   Supabase note under External services for why `where: { userId }` is the real boundary. One item cannot be done from here, the "confirm email before
+   sign-in" setting, which exists only in the Supabase dashboard.
+
+5. **BRA-208, deploy.** Needs `SUPABASE_SERVICE_ROLE_KEY`, a real `ANTHROPIC_API_KEY`, a
+   `CRON_SECRET`, and a **separate Supabase project for production**. Do not point Vercel at
+   `wdtxfeciuofzyuyzzhdx`. In Vercel set `DATABASE_URL` to the pooler and do not set `DIRECT_URL`
+   at all, because its host is IPv6-only. Pick Node 22 or later while you are there: the Supabase
+   client already warns that Node 20 support is ending.
+
+6. **Then promote.** `develop` is 16 commits ahead of `main` and **none of it has been exercised in
+   a browser.** Hold the promotion until it has, then run `/code-review`, then fast-forward.
+
+Known and not yet ticketed: Marr Labs carries nine stale signature reminders that only a
+"completed DocuSign envelope closes its reminders" rule would clear. Worth a ticket of its own.
+
 ## Running it
 
 ```bash
 pnpm install
 pnpm dev          # regenerates the Prisma client first, on purpose (see below)
-pnpm test         # 188 unit tests, all pure logic
+pnpm test         # 267 unit tests, all pure logic
 pnpm typecheck
 pnpm build
 ```
@@ -91,6 +132,19 @@ Break these and the app quietly lies about money.
    A subject naming one is what the email is about and files at 0.9; a body-only mention is 0.85.
 11. **Never claim silence for a filing failure.** If unfiled mail mentions a company, say so and
    point at the review queue instead of reporting the founder as quiet.
+12. **An email that yielded nothing says so.** A body the parser emptied and an extraction that
+   found nothing both used to be indistinguishable from a quiet month, which is how 21 forwarded
+   updates sat empty across four companies while their pages read as healthy. Both now set
+   `Update.ingestIssue`, and a flagged row cannot auto-confirm on a subject-line match, because a
+   subject survives truncation and was scoring 0.9 on its own.
+13. **The sync never re-reads a stored email.** It deduplicates on Gmail message id, so no number
+   of syncs will repair a row that was parsed wrongly. Repairing one is a different operation:
+   `lib/gmail/reparse.ts` re-fetches by message id and rewrites only the parsed fields, leaving the
+   company match, review state and anything `editedByUser` alone.
+14. **Trim the bottom of an email, not the top.** Quoted-reply markers cut at the earliest match,
+   and a forward puts `From:` in a header block at the top, so the marker meant for Outlook history
+   discarded entire payloads. `stripQuotedReplies` skips a forward preamble before cutting. The
+   test that claimed to cover this had no forward in its fixture, which is why it passed for months.
 
 ## External services and their traps
 
@@ -151,9 +205,17 @@ inert while nothing carries a suggestion and matters from the next deal on.
 Bravi is the one position flagged for review, correctly: its wire instructions billed $425 including
 a $250 admin fee waived for members, and $175 was wired. The flag names the schedule, not the bank.
 
-Two loose ends: Vessel's wire is filed but not yet extracted, so its position is not marked
-payment-confirmed; and existing positions predate `underlyingInstrument`, so they show "not stated"
-until a document is re-read or it is set by hand.
+Of the 196 stored emails, 44 have been extracted and **32 are flagged as having carried nothing**:
+21 whose bodies the forward bug emptied (Vessel 9, Saile 5, Bravi 4, Zaqa AI 1) and 11 that
+extracted cleanly and produced no metrics, signals, money or documents. The second group is not
+necessarily broken; some months genuinely have no news in them. Both show a notice on the company
+page and in the review queue. Treat any per-company reading of signals or trend as provisional
+until step 2 of Next steps has run, Vessel's above all.
+
+Three loose ends: Vessel's wire is filed but not yet extracted, so its position is not marked
+payment-confirmed; existing positions predate `underlyingInstrument`, so they show "not stated"
+until a document is re-read or it is set by hand; and Gmail has not synced since 2026-09-04 because
+its refresh token is dead, so everything above is a month stale.
 
 ## Working preferences
 
