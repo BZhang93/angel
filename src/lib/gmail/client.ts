@@ -93,9 +93,21 @@ export async function accessTokenFromRefresh(refreshToken: string): Promise<stri
     }),
   });
 
-  const data = (await response.json()) as { access_token?: string; error_description?: string };
+  // Google's error_description here is often just "Bad Request". The machine
+  // readable `error` is what distinguishes a dead grant (invalid_grant: expired,
+  // revoked, or issued by a different OAuth client) from a dead client
+  // (invalid_client: the id or secret no longer matches). Without it, every
+  // cause looks the same and the fix is a guess.
+  const data = (await response.json()) as {
+    access_token?: string;
+    error?: string;
+    error_description?: string;
+  };
   if (!response.ok || !data.access_token) {
-    throw new Error(`Google token refresh failed: ${data.error_description ?? response.status}`);
+    const detail = [data.error, data.error_description].filter(Boolean).join(": ");
+    throw new Error(
+      `Google token refresh failed (${response.status}): ${detail || "no error body"}`,
+    );
   }
   return data.access_token;
 }
