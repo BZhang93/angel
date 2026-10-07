@@ -18,13 +18,25 @@ in this codebase have come from breaking one of them, not from writing broken co
 
 Ordered, because the first item blocks the two after it. Last revised 2026-10-04.
 
-1. **Reconnect Gmail. This one needs a human.** Google rejects the stored refresh token with a 400
-   from its token endpoint. `decryptSecret` succeeds before the request goes out, so
-   `APP_ENCRYPTION_KEY` is intact and the token itself is dead; the likely cause is the seven-day
-   Testing-mode expiry described under External services. Reconnect in `/settings`, and publish the
-   consent screen or this returns every week. Note that nothing has synced since 2026-09-04, so the
-   scheduled sync has most likely been failing silently for a month. A sync that cannot
-   authenticate should be loud and currently is not, which is worth fixing in the same pass.
+1. **Reconnect Gmail. This one needs a human.** Google answers the refresh request with
+   `400 invalid_grant: Bad Request`. Two things follow from the error code and neither is a guess.
+   `invalid_grant` rather than `invalid_client` means Google accepted `GOOGLE_CLIENT_ID` and
+   `GOOGLE_CLIENT_SECRET`, so the environment is fine and only the stored grant is dead;
+   `decryptSecret` succeeds before the request goes out, so `APP_ENCRYPTION_KEY` is intact too.
+
+   What killed the grant is **not** determinable from inside the app. The token was written when the
+   account was connected on 2026-09-03 23:47Z and last used successfully at 2026-09-04 04:40Z, five
+   hours later, and nothing has exercised it since, so the death could date from anywhere in the
+   33 days after. The seven-day Testing-mode expiry under External services fits, but so do a
+   revoke and a password change, and there is no observation in the window that separates them. Two
+   places outside the app decide it: the consent screen's publishing status in the Google Cloud
+   console, and the third-party access page in the Google account, which shows a revoke. Check
+   those before concluding anything, and publish the consent screen only if it really says Testing.
+
+   The month of silence has a separate and duller cause: no sync was scheduled to run. `autoSync` is
+   on, but Gmail push cannot reach a laptop and the hourly run is a Vercel cron that does not exist
+   until BRA-208 deploys. Nothing failed silently because nothing ran. The loudness problem is still
+   real for when it does run, and is worth fixing in the same pass.
 
 2. **Recover the 21 lost bodies.** Run
    `NODE_OPTIONS="--conditions=react-server" pnpm exec tsx scripts/reparse-truncated.mts`.
