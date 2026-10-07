@@ -39,6 +39,18 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
                 Last synced {account.lastSyncedAt ? shortDate(account.lastSyncedAt) : "never"}
               </span>
             </div>
+            {/* A connected account still needs a way back to consent. Google
+                can invalidate a refresh token at any time, by expiry or revoke,
+                and the row stays behind looking healthy. Without this link the
+                only control on screen is Sync Now, which fails on the dead
+                token forever. Reconnecting upserts over the same row. */}
+            <p className="text-sm text-muted">
+              Syncing stopped working?{" "}
+              <a href="/api/gmail/connect" className="underline">
+                Reconnect Gmail
+              </a>{" "}
+              to replace the saved permission. Nothing already imported is affected.
+            </p>
             <SyncPanel syncQuery={account.syncQuery} pendingCount={pendingCount} />
             <div className="border-t border-border pt-3">
               <AutoSyncToggle

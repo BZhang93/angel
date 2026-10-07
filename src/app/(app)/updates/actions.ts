@@ -14,6 +14,7 @@ import { syncGmail } from "@/lib/gmail/sync";
 import { rematchPendingUpdates } from "@/lib/gmail/rematch";
 import { ensureWatch } from "@/lib/gmail/pipeline";
 import { scanCompanyUpdates } from "@/lib/gmail/refresh";
+import { syncErrorMessage } from "@/lib/gmail/auth-error";
 
 export type UpdateActionResult = { status: "error"; message: string } | { status: "ok"; message: string } | void;
 
@@ -167,7 +168,7 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
         .join(" "),
     };
   } catch (error) {
-    return { status: "error", message: error instanceof Error ? error.message : "Sync failed." };
+    return { status: "error", message: syncErrorMessage(error) };
   }
 }
 
@@ -201,7 +202,7 @@ export async function scanForUpdates(form: FormData): Promise<UpdateActionResult
       ].join(" "),
     };
   } catch (error) {
-    return { status: "error", message: error instanceof Error ? error.message : "Scan failed." };
+    return { status: "error", message: syncErrorMessage(error, "Scan failed.") };
   }
 }
 
@@ -251,7 +252,7 @@ export async function setAutoSync(form: FormData): Promise<UpdateActionResult> {
 
   const watch = await ensureWatch(userId).catch((error: unknown) => ({
     watching: false,
-    reason: error instanceof Error ? error.message : "Could not register the Gmail watch.",
+    reason: syncErrorMessage(error, "Could not register the Gmail watch."),
   }));
 
   revalidatePath("/settings");
