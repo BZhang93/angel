@@ -13,6 +13,7 @@ import {
 import { deriveCompanySignals, type DerivedSignal } from "@/lib/signals";
 import { computeTrend, type TrendResult, type TrendSignal } from "@/lib/trend";
 import { mentionsCompany } from "@/lib/gmail/content-match";
+import { isClosed, sharedOutcome } from "@/lib/position-status";
 
 // Read models for the UI. This layer does the Prisma work and hands plain
 // numbers to the pure functions in portfolio.ts / signals.ts, so the maths stays
@@ -40,10 +41,13 @@ export interface CompanySummary {
   website: string | null;
   sector: string | null;
   status: string;
-  /// Every position refunded: the money came back. Shown beside the company's
+  /// Every position closed, however each one ended. Shown beside the company's
   /// own status, which says nothing about whether the investor still holds
   /// anything.
-  refunded: boolean;
+  closed: boolean;
+  /// What to call the ending when there is one word for it: "Exited",
+  /// "Refunded", or "Closed" when the positions ended in different ways.
+  outcome: string | null;
   stage: string;
   /// Total cash out, fees included: what actually left the account.
   deployed: number;
@@ -172,17 +176,17 @@ export async function getCompanySummaries(
       0,
     );
     const companyIsDead = company.status === "SHUT_DOWN";
-    // Every position, not any: a refunded first cheque alongside a live
+    // Every position, not any: a closed first cheque alongside a live
     // follow-on is still a live holding.
-    const refunded =
-      company.positions.length > 0 &&
-      company.positions.every((position) => position.status === "REFUNDED");
+    const statuses = company.positions.map((position) => position.status);
+    const closed = statuses.length > 0 && statuses.every(isClosed);
+    const outcome = sharedOutcome(statuses);
 
     const mark = {
       shareCount: shareCount > 0 ? shareCount : null,
       latestPricePerShare: latestPriced ? toNumber(latestPriced.pricePerShare) : null,
       companyIsDead,
-      refunded,
+      closed,
     };
 
     const unrealized = unrealizedValue(flows, mark);
@@ -221,7 +225,8 @@ export async function getCompanySummaries(
       website: company.website,
       sector: company.sector,
       status: company.status,
-      refunded,
+      closed,
+      outcome,
       stage: company.stage,
       deployed: totalDeployed(flows),
       invested: costBasis(flows),
@@ -289,10 +294,10 @@ export interface PortfolioTotals {
   activeCount: number;
   deadCount: number;
   exitedCount: number;
-  /// Companies whose money all came back. Counted apart from the live ones: a
-  /// refunded position is not exposure, and calling it active overstates how
-  /// many bets are running.
-  refundedCount: number;
+  /// Companies with nothing left running, however their positions ended.
+  /// Counted apart from the live ones: a closed position is not exposure, and
+  /// calling it active overstates how many bets are in play.
+  closedCount: number;
 }
 
 export function rollUp(summaries: CompanySummary[]): PortfolioTotals {
@@ -311,10 +316,10 @@ export function rollUp(summaries: CompanySummary[]): PortfolioTotals {
     totalValue: realized + unrealized,
     moic: deployed > 0 ? (realized + unrealized) / deployed : null,
     companyCount: summaries.length,
-    activeCount: summaries.filter((c) => c.status === "ACTIVE" && !c.refunded).length,
+    activeCount: summaries.filter((c) => c.status === "ACTIVE" && !c.closed).length,
     deadCount: summaries.filter((c) => c.status === "SHUT_DOWN").length,
     exitedCount: summaries.filter((c) => c.status === "ACQUIRED" || c.status === "IPO").length,
-    refundedCount: summaries.filter((c) => c.refunded).length,
+    closedCount: summaries.filter((c) => c.closed).length,
   };
 }
 

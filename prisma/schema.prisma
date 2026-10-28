@@ -54,11 +54,25 @@ enum Stage {
 /// can return an investor's money while the company carries on, and a refunded
 /// position must stop counting as exposure without implying anything about the
 /// company.
+/// Conversion is absent on purpose: a SAFE that converts has not ended, and
+/// convertedIntoId already records what it became. Every closed state here
+/// writes its own ledger line, so cash is never implied by a status. The
+/// catalogue of what each one means lives in lib/position-status.ts.
 enum PositionStatus {
   ACTIVE
-  /// The money came back and no interest was ever acquired. The refund itself
-  /// is a DISTRIBUTION in the ledger; this says the position is over.
+  /// Acquired, IPO'd or otherwise cashed out.
+  EXITED
+  /// The stake was sold to another buyer while the company carried on.
+  SECONDARY_SOLD
+  /// A convertible note matured and was repaid in cash instead of converting.
+  REPAID
+  /// The company failed or the stake is worthless.
+  WRITTEN_OFF
+  /// The deal never happened and the money came back. No interest was ever
+  /// acquired, which is what separates this from an exit at cost.
   REFUNDED
+  /// Committed but never funded: the allocation lapsed or was withdrawn.
+  CANCELLED
 }
 
 enum InstrumentType {

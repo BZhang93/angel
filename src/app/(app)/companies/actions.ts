@@ -9,6 +9,7 @@ import { guessDocumentKind } from "@/lib/gmail/parse";
 import { extractDocumentTerms } from "@/lib/extract/document";
 import { applyTermsToPortfolio } from "@/lib/extract/apply-document";
 import { recordClaim } from "@/lib/claims";
+import { outcomeFor } from "@/lib/position-status";
 import { downloadAttachment, deleteAttachment } from "@/lib/storage";
 import { randomUUID } from "node:crypto";
 import type { DocumentKind } from "@/generated/prisma/enums";
@@ -191,27 +192,34 @@ export async function addTransaction(form: FormData): Promise<ActionResult> {
   revalidatePath(`/companies/${position.companyId}`);
 }
 
-/// The note on the refund transaction this action writes. Also what tells a
-/// reversal which line it may remove: a hand-entered distribution is the
-/// investor's own record and is never touched.
-const REFUND_NOTE = "Refunded by the vehicle.";
+/// The note on the ledger line these actions write. Also what tells a reversal
+/// which line it may remove: a hand-entered distribution is the investor's own
+/// record and is never touched.
+const CLOSING_NOTE = "Recorded when the position was closed.";
 
-/// Records money coming back and closes the position.
+/// Closes a position with the outcome that actually happened.
 ///
-/// A syndicate that collects the wires and then returns them leaves nothing
-/// behind: no interest was ever acquired, and the company carries on without
-/// the investor. Until this existed the portfolio went on showing the cheque
-/// as live exposure, because the only way to end a position was to declare the
-/// company dead, which it is not.
-export async function refundPosition(form: FormData): Promise<ActionResult> {
+/// A position and its company have separate fates. A syndicate can return the
+/// money while the company carries on; a stake can be sold while the company
+/// goes from strength to strength; a company can fail while an earlier
+/// secondary already paid out. Until this existed the only way to end a
+/// position was to declare the company dead, so none of that was recordable.
+///
+/// The status never implies cash. Whatever the outcome returned is written to
+/// the ledger here, because deployed, MOIC and IRR are summed from
+/// transactions and nothing else.
+export async function closePosition(form: FormData): Promise<ActionResult> {
   const userId = await requireUserId();
   const positionId = str(form, "positionId");
+  const status = str(form, "status");
   const amount = optionalNumber(form, "amount");
   const date = optionalDate(form, "date");
 
-  if (!date) return { status: "error", message: "A refund date is required." };
-  if (amount == null || amount <= 0) {
-    return { status: "error", message: "Enter how much came back." };
+  const outcome = outcomeFor(status);
+  if (!outcome) return { status: "error", message: "Pick how the position ended." };
+  if (!date) return { status: "error", message: "A date is required." };
+  if (outcome.expectsProceeds && (amount == null || amount <= 0)) {
+    return { status: "error", message: `Enter how much came back for "${outcome.label}".` };
   }
 
   const position = await prisma.position.findFirst({
@@ -219,28 +227,37 @@ export async function refundPosition(form: FormData): Promise<ActionResult> {
     select: { companyId: true, status: true },
   });
   if (!position) return { status: "error", message: "Position not found." };
-  if (position.status === "REFUNDED") {
-    return { status: "error", message: "This position is already recorded as refunded." };
+  if (position.status !== "ACTIVE") {
+    return { status: "error", message: "This position is already closed." };
   }
 
-  // The refund is cash in, so it belongs in the ledger like any other inflow:
-  // that is what keeps deployed, MOIC and IRR right. The status is what stops
-  // the remainder being carried as though something were still held.
-  await prisma.transaction.create({
-    data: { userId, positionId, kind: "DISTRIBUTION", amount, date, notes: REFUND_NOTE },
-  });
+  if (outcome.ledgerKind) {
+    await prisma.transaction.create({
+      data: {
+        userId,
+        positionId,
+        kind: outcome.ledgerKind as TransactionKind,
+        // A write-off is zero by the ledger's own convention: it records the
+        // loss and the tax year, not a payment.
+        amount: outcome.expectsProceeds ? amount! : 0,
+        date,
+        notes: CLOSING_NOTE,
+      },
+    });
+  }
+
   await prisma.position.update({
     where: { id: positionId },
-    data: { status: "REFUNDED", closedAt: date },
+    data: { status: outcome.status, closedAt: date },
   });
 
   revalidatePath("/", "layout");
 }
 
-/// Undoes a refund, including the ledger line it wrote.
+/// Reopens a closed position, including the ledger line the closing wrote.
 ///
-/// Only the line this action wrote: a distribution typed in by hand predates
-/// the mistake and is not this action's to remove.
+/// Only that line: a distribution typed in by hand predates the mistake and is
+/// not this action's to remove.
 export async function reopenPosition(form: FormData): Promise<ActionResult> {
   const userId = await requireUserId();
   const positionId = str(form, "positionId");
@@ -251,9 +268,7 @@ export async function reopenPosition(form: FormData): Promise<ActionResult> {
   });
   if (!position) return { status: "error", message: "Position not found." };
 
-  await prisma.transaction.deleteMany({
-    where: { userId, positionId, kind: "DISTRIBUTION", notes: REFUND_NOTE },
-  });
+  await prisma.transaction.deleteMany({ where: { userId, positionId, notes: CLOSING_NOTE } });
   await prisma.position.update({
     where: { id: positionId },
     data: { status: "ACTIVE", closedAt: null },

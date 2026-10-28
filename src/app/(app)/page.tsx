@@ -117,10 +117,10 @@ export default async function DashboardPage() {
           value={`${totals.activeCount} active`}
           sub={[
             `${totals.exitedCount} exited`,
-            // Only when it has happened: a standing "0 refunded" is noise, and
-            // a refunded company counted as active would overstate the bets
+            // Only when it has happened: a standing "0 closed" is noise, and a
+            // closed company counted as active would overstate the bets
             // actually running.
-            totals.refundedCount > 0 ? `${totals.refundedCount} refunded` : null,
+            totals.closedCount > 0 ? `${totals.closedCount} closed` : null,
             unrecorded > 0 ? `${unrecorded} without an amount` : `${totals.deadCount} written off`,
           ]
             .filter(Boolean)

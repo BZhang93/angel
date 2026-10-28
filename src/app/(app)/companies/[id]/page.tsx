@@ -34,10 +34,11 @@ import {
   addTransaction,
   addValuation,
   completeActionItem,
-  refundPosition,
   reopenPosition,
   updateCompanyStatus,
 } from "../actions";
+import { ClosePosition } from "./close-position";
+import { isClosed, statusLabel } from "@/lib/position-status";
 
 function num(value: unknown): number | null {
   if (value == null) return null;
@@ -83,9 +84,9 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
               </a>
             )}
             <Pill>{titleCase(company.status)}</Pill>
-            {/* Beside the company's status, never instead of it: the money
-                coming back says nothing about how the company is doing. */}
-            {summary?.refunded && <Pill>Refunded</Pill>}
+            {/* Beside the company's status, never instead of it: how a holding
+                ended says nothing about how the company is doing. */}
+            {summary?.outcome && <Pill>{summary.outcome}</Pill>}
             <Pill>{titleCase(company.stage)}</Pill>
             {company.sector && <Pill>{company.sector}</Pill>}
           </div>
@@ -261,9 +262,10 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                         </Link>
                       )}
                       {position.convertedIntoId && <Pill>Converted</Pill>}
-                      {position.status === "REFUNDED" && (
+                      {isClosed(position.status) && (
                         <Pill>
-                          Refunded{position.closedAt ? ` ${shortDate(position.closedAt)}` : ""}
+                          {statusLabel(position.status)}
+                          {position.closedAt ? ` ${shortDate(position.closedAt)}` : ""}
                         </Pill>
                       )}
                       {discrepancies.length > 0 && (
@@ -329,40 +331,18 @@ export default async function CompanyPage({ params }: PageProps<"/companies/[id]
                     </div>
                   </details>
 
-                  {position.status === "REFUNDED" ? (
-                    <ActionForm action={reopenPosition} submitLabel="Reopen Position" compact>
-                      <input type="hidden" name="positionId" value={position.id} />
-                      <p className="text-xs text-muted">
-                        Closed as refunded. Reopening removes the refund line it added.
-                      </p>
-                    </ActionForm>
+                  {isClosed(position.status) ? (
+                    <div className="mt-3">
+                      <ActionForm action={reopenPosition} submitLabel="Reopen Position" compact>
+                        <input type="hidden" name="positionId" value={position.id} />
+                        <p className="text-xs text-muted">
+                          Closed as {statusLabel(position.status).toLowerCase()}. Reopening removes
+                          the ledger line that closing it added.
+                        </p>
+                      </ActionForm>
+                    </div>
                   ) : (
-                    <details className="mt-3">
-                      <summary className="cursor-pointer text-xs text-muted">
-                        Money Came Back
-                      </summary>
-                      <div className="mt-2">
-                        <ActionForm action={refundPosition} submitLabel="Record Refund" compact>
-                          <input type="hidden" name="positionId" value={position.id} />
-                          <p className="mb-2 text-xs text-muted">
-                            For a deal that never happened: the vehicle returned the money and no
-                            interest was acquired. The position stops counting as exposure.
-                          </p>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {/* Defaulted to everything that went out, fees included,
-                                because a refund of part of it is the exception. */}
-                            <Field
-                              label="Amount returned"
-                              name="amount"
-                              type="number"
-                              defaultValue={String(invested)}
-                              required
-                            />
-                            <Field label="Date" name="date" type="date" required />
-                          </div>
-                        </ActionForm>
-                      </div>
-                    </details>
+                    <ClosePosition positionId={position.id} deployed={invested} />
                   )}
                 </div>
               );

@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { totalDeployed, totalRealized, type CashKind, type Cashflow } from "@/lib/portfolio";
+import { isClosed, statusLabel } from "@/lib/position-status";
 
 // Investments grouped by the vehicle they were made through.
 //
@@ -13,8 +14,9 @@ export interface VehicleHolding {
   companyId: string;
   companyName: string;
   status: string;
-  /// The vehicle took the money and gave it back: the deal never happened.
-  refunded: boolean;
+  /// How this holding ended, when it has: "Exited", "Refunded", "Written off".
+  /// Null while it is live.
+  outcome: string | null;
   deployed: number;
   fees: number;
   realized: number;
@@ -69,7 +71,7 @@ export async function getVehicles(userId: string): Promise<VehicleSummary[]> {
       companyId: position.company.id,
       companyName: position.company.name,
       status: position.company.status,
-      refunded: position.status === "REFUNDED",
+      outcome: isClosed(position.status) ? statusLabel(position.status) : null,
       deployed,
       fees: round2(deployed - invested),
       realized: totalRealized(flows),

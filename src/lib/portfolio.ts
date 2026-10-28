@@ -54,9 +54,9 @@ export interface MarkInputs {
   latestPricePerShare?: number | null;
   /// True once the company is dead: the mark is zero regardless of anything else.
   companyIsDead?: boolean;
-  /// True once every position has been refunded: the money came back and no
-  /// interest was ever acquired, so there is nothing left to carry.
-  refunded?: boolean;
+  /// True once every position has closed, however it ended: the proceeds are
+  /// in the ledger by then, so there is nothing left to carry.
+  closed?: boolean;
 }
 
 /// Current value of what is still held.
@@ -64,14 +64,15 @@ export interface MarkInputs {
 /// Convention, and the reason this is not just shares × price:
 ///   - A dead company marks to zero, whatever the last round said.
 ///   - A written-off position marks to zero.
-///   - A refunded position marks to zero: the cash came back, and carrying the
-///     unrefunded remainder at cost would price a holding that never existed.
+///   - A closed position marks to zero, whether it exited, was refunded or was
+///     written off: whatever it returned is already in the ledger, and
+///     carrying the remainder at cost would price a holding nobody has.
 ///   - Priced equity with a known share count and price marks to shares × price.
 ///   - Anything else (an unconverted SAFE, a note, a position with no mark) is
 ///     carried at cost. Angel convention, and it is honest: an uncapped guess
 ///     is worse than the number actually paid.
 export function unrealizedValue(flows: Cashflow[], mark: MarkInputs): number {
-  if (mark.companyIsDead || mark.refunded || isWrittenOff(flows)) return 0;
+  if (mark.companyIsDead || mark.closed || isWrittenOff(flows)) return 0;
 
   const { shareCount, latestPricePerShare } = mark;
   if (shareCount != null && latestPricePerShare != null) {
