@@ -22,7 +22,8 @@ export interface BackfillResult {
   recorded: number;
   stored: number;
   failed: number;
-  /// True when no unchecked mail remains, so a caller can stop reporting it.
+  /// True when nothing is left to check and nothing is missing its bytes, so
+  /// a caller can stop reporting it.
   complete: boolean;
 }
 
@@ -37,7 +38,17 @@ export async function backfillAttachments(
   if (!account) throw new Error("Connect Gmail first.");
 
   const pending = await prisma.update.findMany({
-    where: { userId, attachmentsCheckedAt: null },
+    where: {
+      userId,
+      OR: [
+        { attachmentsCheckedAt: null },
+        // Checked, but an attachment it found has no bytes: the download or
+        // the upload failed, which happens for a whole run at a time when
+        // storage is misconfigured. Without this the stamp would make a
+        // transient outage permanent, since the row looks dealt with.
+        { documents: { some: { storagePath: null, gmailAttachmentId: { not: null } } } },
+      ],
+    },
     // Newest first: a recently signed agreement is the one someone is waiting
     // on, and an old one has waited this long already.
     orderBy: { receivedAt: "desc" },
