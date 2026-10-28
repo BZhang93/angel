@@ -32,6 +32,9 @@ export interface PipelineResult {
   /// before a bank transfer reveals them.
   fees: number;
   pending: number;
+  /// Why extraction failed, when it did. A run that reads nothing because a
+  /// credential expired must not look like a run with nothing to read.
+  extractionError?: string;
 }
 
 export async function runIngestPipeline(userId: string): Promise<PipelineResult> {
@@ -74,6 +77,7 @@ export async function runIngestPipeline(userId: string): Promise<PipelineResult>
     documents: documents.extracted,
     fees: wireFees.feesRecorded,
     pending: rematch.stillPending,
+    ...(extraction.failureReason ? { extractionError: extraction.failureReason } : {}),
   };
 }
 

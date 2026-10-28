@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { linkedTextForUpdate } from "@/lib/enrich/links";
 import { mapWithConcurrency } from "@/lib/concurrency";
+import { extractionErrorMessage } from "@/lib/ai/errors";
 import { recordPayment } from "./payments";
 import type { Extraction } from "./schema";
 import { parseWireTable } from "@/lib/import/wire-table";
@@ -200,7 +201,7 @@ export async function extractPendingUpdates(
     linkedText?: string[];
   }) => Promise<Extraction>,
   opts: { limit?: number } = {},
-): Promise<{ extracted: number; failed: number }> {
+): Promise<{ extracted: number; failed: number; failureReason?: string }> {
   const updates = await prisma.update.findMany({
     where: { userId, reviewState: "CONFIRMED", companyId: { not: null }, extractedAt: null },
     include: { company: { select: { name: true } } },
@@ -228,7 +229,18 @@ export async function extractPendingUpdates(
 
   // One unreadable email stays unextracted and is retried on the next run.
   const extracted = results.filter((entry) => entry.status === "fulfilled").length;
-  const failed = results.length - extracted;
+  const rejected = results.filter(
+    (entry): entry is PromiseRejectedResult => entry.status === "rejected",
+  );
 
-  return { extracted, failed };
+  // A count with no cause is how a credential that stopped working goes
+  // unnoticed for a month: every run cheerfully reports zero. The first
+  // rejection is carried out so a caller can say why.
+  return {
+    extracted,
+    failed: rejected.length,
+    ...(rejected.length > 0
+      ? { failureReason: extractionErrorMessage(rejected[0]!.reason) }
+      : {}),
+  };
 }

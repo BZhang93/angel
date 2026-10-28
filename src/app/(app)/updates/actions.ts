@@ -14,6 +14,7 @@ import { rematchPendingUpdates } from "@/lib/gmail/rematch";
 import { ensureWatch, runIngestPipeline } from "@/lib/gmail/pipeline";
 import { scanCompanyUpdates } from "@/lib/gmail/refresh";
 import { syncErrorMessage } from "@/lib/gmail/auth-error";
+import { extractionErrorMessage } from "@/lib/ai/errors";
 
 export type UpdateActionResult = { status: "error"; message: string } | { status: "ok"; message: string } | void;
 
@@ -49,9 +50,16 @@ export async function confirmUpdate(form: FormData): Promise<UpdateActionResult>
     });
   } catch (error) {
     // The assignment stands even if extraction fails; it retries on the next run.
-    const message = error instanceof Error ? error.message : "Extraction failed.";
-    revalidatePath("/", "layout");
-    return { status: "error", message: `Assigned, but extraction failed: ${message}` };
+    //
+    // Deliberately no revalidatePath here. Revalidating re-renders the queue,
+    // the row is no longer pending so it leaves, and the component holding this
+    // message unmounts with it: the one explanation of the failure flashes and
+    // is gone. The write is already committed, so a queue that stays until the
+    // next navigation costs nothing and keeps the message readable.
+    return {
+      status: "error",
+      message: `Assigned, but not read. ${extractionErrorMessage(error)}`,
+    };
   }
 
   revalidatePath("/", "layout");
@@ -105,12 +113,19 @@ export async function confirmUpdates(
   // The assignment stands whatever extraction did: a failed read is retried on
   // the next sync, and saying so beats reporting a clean success.
   const extracted = results.filter((result) => result.status === "fulfilled").length;
-  const failed = results.length - extracted;
+  const failures = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+
+  // Why they failed, not just how many. One cause is the usual case, so the
+  // first rejection speaks for the batch rather than being swallowed.
+  const reason =
+    failures.length > 0 ? ` ${extractionErrorMessage(failures[0]!.reason)}` : "";
 
   revalidatePath("/", "layout");
   return {
-    status: "ok",
-    message: `Assigned ${updates.length} update${updates.length === 1 ? "" : "s"} to ${company.name}, ${extracted} read${failed ? `, ${failed} could not be read and will retry` : ""}.`,
+    status: failures.length > 0 ? "error" : "ok",
+    message: `Assigned ${updates.length} update${updates.length === 1 ? "" : "s"} to ${company.name}, ${extracted} read${failures.length ? `, ${failures.length} could not be read` : ""}.${reason}`,
   };
 }
 
@@ -146,7 +161,9 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
     const run = await runIngestPipeline(userId);
     revalidatePath("/", "layout");
     return {
-      status: "ok",
+      // An extraction failure is reported as an error even though ingest
+      // succeeded: filing mail nobody can read is not a working sync.
+      status: run.extractionError ? "error" : "ok",
       message: [
         `${run.created} new (${run.unlabelled} you never labelled, ${run.pending} awaiting review).`,
         run.refused > 0 ? `${run.refused} searched and left alone.` : null,
@@ -154,6 +171,7 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
         `Extracted ${run.extracted} update${run.extracted === 1 ? "" : "s"}.`,
         run.documents > 0 ? `${run.documents} attachment${run.documents === 1 ? "" : "s"} read.` : null,
         run.fees > 0 ? `${run.fees} fee${run.fees === 1 ? "" : "s"} taken from wire instructions.` : null,
+        run.extractionError ?? null,
       ]
         .filter((part) => part !== null)
         .join(" "),
