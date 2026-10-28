@@ -25,6 +25,9 @@ export interface PipelineResult {
   unlabelled: number;
   /// Discovered mail the gate refused, so nothing about it was stored or read.
   refused: number;
+  /// False while discovery still has older mail to walk back through, so a
+  /// first sync on a large mailbox can say that it is not finished yet.
+  backfilled: boolean;
   filed: number;
   extracted: number;
   documents: number;
@@ -66,7 +69,7 @@ export async function runIngestPipeline(
   const discovery =
     deep && account.autoDiscover
       ? await discoverUpdates(userId, { sinceDays: account.discoverDays })
-      : { created: 0, refused: 0, documents: 0 };
+      : { created: 0, refused: 0, documents: 0, backfilled: true };
 
   const rematch = await rematchPendingUpdates(userId);
   await fetchPendingLinks(userId);
@@ -95,6 +98,7 @@ export async function runIngestPipeline(
     documents: documents.extracted,
     fees: wireFees.feesRecorded,
     pending: rematch.stillPending,
+    backfilled: discovery.backfilled,
     ...(extraction.failureReason ? { extractionError: extraction.failureReason } : {}),
   };
 }

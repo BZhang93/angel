@@ -457,6 +457,13 @@ model GmailAccount {
   /// How far back discovery looks. A year catches the annual rhythm of an
   /// angel portfolio without re-reading a decade of mail.
   discoverDays          Int       @default(365)
+  /// The oldest message discovery has examined. Gmail returns newest first and
+  /// a page is capped, so without walking backwards from here every run reads
+  /// the same newest page and the older mail is never reached at all.
+  discoverOldestAt      DateTime?
+  /// Set once a backfill pass comes back short, meaning the window is drained.
+  /// Cleared whenever `discoverDays` grows, because the window just moved.
+  discoverBackfilledAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -777,6 +784,13 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// One wire is one payment. Extraction is re-run deliberately (a repaired
+  /// body clears extractedAt), and without this a second reading books the
+  /// same transfer again, inflating deployed capital and inventing
+  /// reconciliation discrepancies against a position that was correct.
+  /// Postgres treats NULLs as distinct, so imported payments with no update
+  /// behind them are unaffected; they have no re-extraction path.
+  @@unique([userId, updateId, amount, valueDate])
   @@index([userId, state])
   @@index([companyId])
 }

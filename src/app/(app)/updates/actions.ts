@@ -28,9 +28,8 @@ export async function confirmUpdate(form: FormData): Promise<UpdateActionResult>
 
   // Scoped to what is still pending, as the bulk path already was. The failure
   // path deliberately leaves the row on screen so its error stays readable, so
-  // a second click is now likely rather than theoretical, and extraction is not
-  // safe to run twice: applyExtraction fills gaps idempotently but recordPayment
-  // does not.
+  // a second click is likely rather than theoretical, and a row already filed
+  // should say so rather than quietly do the work again.
   const [update, company] = await Promise.all([
     prisma.update.findFirst({ where: { id: updateId, userId, reviewState: "PENDING" } }),
     prisma.company.findFirst({ where: { id: companyId, userId } }),
@@ -177,6 +176,9 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
       message: [
         `${run.created} new (${run.unlabelled} you never labelled, ${run.pending} awaiting review).`,
         run.refused > 0 ? `${run.refused} searched and left alone.` : null,
+        // Silence here is what hid the backlog: a capped first pass reported a
+        // tidy number and gave no hint that older mail was still unread.
+        run.backfilled ? null : "Still working backwards through older mail; sync again to continue.",
         run.filed > 0 ? `${run.filed} previously unmatched email${run.filed === 1 ? "" : "s"} filed.` : null,
         `Extracted ${run.extracted} update${run.extracted === 1 ? "" : "s"}.`,
         run.documents > 0 ? `${run.documents} attachment${run.documents === 1 ? "" : "s"} read.` : null,

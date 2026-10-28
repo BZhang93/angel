@@ -231,10 +231,27 @@ export function classifyMail(mail: MailShape): Verdict {
   return { keep: true, reason: `${reasons.join(", ")}.`, score };
 }
 
+/// Gmail's `before:` takes a date, not an instant, and excludes the whole day
+/// named. Walking backwards from the oldest message already examined therefore
+/// has to ask for the day AFTER it, or every message sharing that day is
+/// skipped forever. The overlap re-reads one day per pass, which costs nothing:
+/// those ids are already stored and deduplicate away.
+export function beforeTermFor(oldest: Date): string {
+  const boundary = new Date(oldest.getTime() + 24 * 60 * 60 * 1000);
+  const year = boundary.getUTCFullYear();
+  const month = String(boundary.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(boundary.getUTCDate()).padStart(2, "0");
+  return `before:${year}/${month}/${day}`;
+}
+
 /// The Gmail query that finds candidates. Subject phrases plus body phrases
 /// plus the paperwork filenames, bounded by age and kept out of spam and
 /// trash. Long, but Gmail does the work and the result set stays small.
-export function buildDiscoveryQuery(opts: { sinceDays?: number } = {}): string {
+///
+/// `before` turns the same query into a backfill pass: Gmail answers newest
+/// first and a page is capped, so draining a mailbox means repeatedly asking
+/// for what lies before the oldest message seen so far.
+export function buildDiscoveryQuery(opts: { sinceDays?: number; before?: Date } = {}): string {
   const sinceDays = opts.sinceDays ?? 365;
   const subjectTerms = SUBJECT_PHRASES.map((phrase) => `subject:"${phrase}"`);
   const bodyTerms = [
@@ -256,5 +273,6 @@ export function buildDiscoveryQuery(opts: { sinceDays?: number } = {}): string {
   // by default, so without them the investor's own outgoing email about a wire
   // is discovered, and content matching scores a body naming a portfolio
   // company high enough to file it as that company's own update.
-  return `(${any}) newer_than:${sinceDays}d -in:spam -in:trash -in:sent -in:drafts -in:chats`;
+  const before = opts.before ? ` ${beforeTermFor(opts.before)}` : "";
+  return `(${any}) newer_than:${sinceDays}d${before} -in:spam -in:trash -in:sent -in:drafts -in:chats`;
 }

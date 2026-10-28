@@ -91,6 +91,21 @@ export async function recordPayment(
         ? "DISCREPANCY"
         : "UNMATCHED";
 
+  // One wire is one payment, however many times the email is read. Extraction
+  // is re-run deliberately: reparse clears extractedAt so a repaired body gets
+  // another reading, and a second booking of the same transfer would inflate
+  // deployed capital and invent a reconciliation discrepancy against a position
+  // that was correct. The database holds the same rule as a unique index; this
+  // check is what lets the caller carry on rather than hit a constraint error.
+  const already = await prisma.payment.findFirst({
+    where: { userId, updateId: input.updateId, amount: input.payment.amount, valueDate },
+    select: { id: true },
+  });
+  // `recorded: false` with the state it would have had: the caller's summary
+  // says nothing new was booked, which is the truth, while the reconciliation
+  // reading stays available to it.
+  if (already) return { recorded: false, state };
+
   const created = await prisma.payment.create({
     data: {
       userId,

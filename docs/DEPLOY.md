@@ -45,6 +45,25 @@ Import the repo, framework Next.js, and set Node to **22 or later**. Node 20
 still builds but `@supabase/supabase-js` now warns that it is deprecated, and
 the warning will become a break.
 
+### Function duration
+
+`/api/gmail/sync` declares `export const maxDuration = 300`. The hourly run
+executes the whole pipeline for every opted-in account, two at a time, including
+dozens of model calls and several Gmail searches, and on the default timeout it
+is killed partway through.
+
+**Check the plan's ceiling before trusting that number.** Vercel caps function
+duration by plan, and the Hobby tier's limit is well below 300 seconds, so on
+Hobby the declaration does not buy what it claims and the cron can still be cut
+off mid-run. Find the limit under the account or team's Settings, Billing, then
+set the route's value and this note to the real ceiling.
+
+A killed run is safe to repeat: every ingest path deduplicates on the Gmail
+message id, and discovery keeps a cursor, so the next run resumes rather than
+starts over.
+
+### The cron secret
+
 `vercel.json` already declares the hourly cron at `/api/gmail/sync`. It needs
 `CRON_SECRET` set, because the route authenticates the scheduled caller with it
 and **fails closed**: with no secret set, the cron request falls through to the

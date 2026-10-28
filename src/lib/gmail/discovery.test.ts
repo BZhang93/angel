@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDiscoveryQuery, classifyMail, type MailShape } from "./discovery";
+import { beforeTermFor, buildDiscoveryQuery, classifyMail, type MailShape } from "./discovery";
 
 function mail(overrides: Partial<MailShape> = {}): MailShape {
   return {
@@ -200,5 +200,29 @@ describe("buildDiscoveryQuery", () => {
     const query = buildDiscoveryQuery();
     expect(query.startsWith("(")).toBe(true);
     expect(query).toMatch(/\) newer_than:\d+d/);
+  });
+});
+
+describe("walking backwards through a mailbox", () => {
+  it("asks for the day after the oldest seen, not the day itself", () => {
+    // Gmail's before: excludes the whole day named. Asking for the oldest
+    // message's own day would skip every other message from that day, and
+    // skip it permanently, since the cursor only ever moves backwards.
+    expect(beforeTermFor(new Date("2026-03-14T18:00:00Z"))).toBe("before:2026/03/15");
+  });
+
+  it("handles a month boundary", () => {
+    expect(beforeTermFor(new Date("2026-02-28T23:30:00Z"))).toBe("before:2026/03/01");
+  });
+
+  it("adds the boundary to the same bounded group", () => {
+    const query = buildDiscoveryQuery({ sinceDays: 365, before: new Date("2026-03-14T00:00:00Z") });
+    expect(query).toContain("newer_than:365d before:2026/03/15");
+    // Still excludes the user's own mail on a backfill pass.
+    expect(query).toContain("-in:sent");
+  });
+
+  it("omits the boundary when there is nothing to walk back from", () => {
+    expect(buildDiscoveryQuery()).not.toContain("before:");
   });
 });
