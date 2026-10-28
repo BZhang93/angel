@@ -50,6 +50,17 @@ enum Stage {
   UNKNOWN
 }
 
+/// Whether a position still exists. Separate from CompanyStatus: a syndicate
+/// can return an investor's money while the company carries on, and a refunded
+/// position must stop counting as exposure without implying anything about the
+/// company.
+enum PositionStatus {
+  ACTIVE
+  /// The money came back and no interest was ever acquired. The refund itself
+  /// is a DISTRIBUTION in the ledger; this says the position is over.
+  REFUNDED
+}
+
 enum InstrumentType {
   SAFE
   /// Keep It Simple Security: a SAFE-like instrument with its own conventions.
@@ -318,6 +329,9 @@ model Position {
   /// Null for a direct investment, where instrumentType already says it.
   underlyingInstrument InstrumentType?
   holdingEntity  HoldingEntity  @default(PERSONAL)
+  status         PositionStatus @default(ACTIVE)
+  /// When the position ended, for a status that is not ACTIVE.
+  closedAt       DateTime?
   /// Date the money went in. Starts the QSBS five-year clock and the IRR clock.
   investmentDate DateTime
   currency       String         @default("USD")

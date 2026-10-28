@@ -60,6 +60,18 @@ describe("unrealizedValue", () => {
     expect(unrealizedValue(written, {})).toBe(0);
   });
 
+  // The Marr Labs case: the SPV took the wire, the deal never happened, and the
+  // money came back. Carrying the unrefunded fee at cost would price a holding
+  // that never existed.
+  it("marks a refunded position to zero even when the fee was kept", () => {
+    const refunded: Cashflow[] = [
+      ...safe,
+      { kind: "FEE", amount: 2500, date: d("2022-03-01") },
+      { kind: "DISTRIBUTION", amount: 25000, date: d("2022-08-01") },
+    ];
+    expect(unrealizedValue(refunded, { refunded: true })).toBe(0);
+  });
+
   it("nets a partial secondary out of a cost-carried position", () => {
     const partial: Cashflow[] = [
       ...safe,

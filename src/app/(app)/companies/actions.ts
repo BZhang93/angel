@@ -191,6 +191,77 @@ export async function addTransaction(form: FormData): Promise<ActionResult> {
   revalidatePath(`/companies/${position.companyId}`);
 }
 
+/// The note on the refund transaction this action writes. Also what tells a
+/// reversal which line it may remove: a hand-entered distribution is the
+/// investor's own record and is never touched.
+const REFUND_NOTE = "Refunded by the vehicle.";
+
+/// Records money coming back and closes the position.
+///
+/// A syndicate that collects the wires and then returns them leaves nothing
+/// behind: no interest was ever acquired, and the company carries on without
+/// the investor. Until this existed the portfolio went on showing the cheque
+/// as live exposure, because the only way to end a position was to declare the
+/// company dead, which it is not.
+export async function refundPosition(form: FormData): Promise<ActionResult> {
+  const userId = await requireUserId();
+  const positionId = str(form, "positionId");
+  const amount = optionalNumber(form, "amount");
+  const date = optionalDate(form, "date");
+
+  if (!date) return { status: "error", message: "A refund date is required." };
+  if (amount == null || amount <= 0) {
+    return { status: "error", message: "Enter how much came back." };
+  }
+
+  const position = await prisma.position.findFirst({
+    where: { id: positionId, userId },
+    select: { companyId: true, status: true },
+  });
+  if (!position) return { status: "error", message: "Position not found." };
+  if (position.status === "REFUNDED") {
+    return { status: "error", message: "This position is already recorded as refunded." };
+  }
+
+  // The refund is cash in, so it belongs in the ledger like any other inflow:
+  // that is what keeps deployed, MOIC and IRR right. The status is what stops
+  // the remainder being carried as though something were still held.
+  await prisma.transaction.create({
+    data: { userId, positionId, kind: "DISTRIBUTION", amount, date, notes: REFUND_NOTE },
+  });
+  await prisma.position.update({
+    where: { id: positionId },
+    data: { status: "REFUNDED", closedAt: date },
+  });
+
+  revalidatePath("/", "layout");
+}
+
+/// Undoes a refund, including the ledger line it wrote.
+///
+/// Only the line this action wrote: a distribution typed in by hand predates
+/// the mistake and is not this action's to remove.
+export async function reopenPosition(form: FormData): Promise<ActionResult> {
+  const userId = await requireUserId();
+  const positionId = str(form, "positionId");
+
+  const position = await prisma.position.findFirst({
+    where: { id: positionId, userId },
+    select: { companyId: true },
+  });
+  if (!position) return { status: "error", message: "Position not found." };
+
+  await prisma.transaction.deleteMany({
+    where: { userId, positionId, kind: "DISTRIBUTION", notes: REFUND_NOTE },
+  });
+  await prisma.position.update({
+    where: { id: positionId },
+    data: { status: "ACTIVE", closedAt: null },
+  });
+
+  revalidatePath("/", "layout");
+}
+
 export async function addValuation(form: FormData): Promise<ActionResult> {
   const userId = await requireUserId();
   const companyId = str(form, "companyId");

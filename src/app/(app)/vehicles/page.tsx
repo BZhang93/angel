@@ -67,6 +67,9 @@ export default async function VehiclesPage() {
                     <Link href={`/companies/${holding.companyId}`} className="hover:underline">
                       {holding.companyName}
                     </Link>
+                    {holding.refunded && (
+                      <span className="ml-2 text-xs text-muted">refunded</span>
+                    )}
                   </td>
                   <td className="py-2">
                     {holding.underlyingInstrument ? (

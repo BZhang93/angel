@@ -13,6 +13,8 @@ export interface VehicleHolding {
   companyId: string;
   companyName: string;
   status: string;
+  /// The vehicle took the money and gave it back: the deal never happened.
+  refunded: boolean;
   deployed: number;
   fees: number;
   realized: number;
@@ -67,6 +69,7 @@ export async function getVehicles(userId: string): Promise<VehicleSummary[]> {
       companyId: position.company.id,
       companyName: position.company.name,
       status: position.company.status,
+      refunded: position.status === "REFUNDED",
       deployed,
       fees: round2(deployed - invested),
       realized: totalRealized(flows),

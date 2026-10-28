@@ -69,6 +69,7 @@ export default async function CompaniesPage() {
                   </Link>
                   <div className="text-xs text-muted">
                     {company.sector ?? "Unspecified"} · {titleCase(company.status)}
+                    {company.refunded && " · Refunded"}
                   </div>
                 </td>
                 <td className="px-4 py-2">

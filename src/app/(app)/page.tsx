@@ -115,11 +115,16 @@ export default async function DashboardPage() {
         <Stat
           label="Status"
           value={`${totals.activeCount} active`}
-          sub={
-            unrecorded > 0
-              ? `${totals.exitedCount} exited · ${unrecorded} without an amount`
-              : `${totals.exitedCount} exited · ${totals.deadCount} written off`
-          }
+          sub={[
+            `${totals.exitedCount} exited`,
+            // Only when it has happened: a standing "0 refunded" is noise, and
+            // a refunded company counted as active would overstate the bets
+            // actually running.
+            totals.refundedCount > 0 ? `${totals.refundedCount} refunded` : null,
+            unrecorded > 0 ? `${unrecorded} without an amount` : `${totals.deadCount} written off`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         />
       </div>
 

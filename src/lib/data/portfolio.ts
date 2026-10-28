@@ -40,6 +40,10 @@ export interface CompanySummary {
   website: string | null;
   sector: string | null;
   status: string;
+  /// Every position refunded: the money came back. Shown beside the company's
+  /// own status, which says nothing about whether the investor still holds
+  /// anything.
+  refunded: boolean;
   stage: string;
   /// Total cash out, fees included: what actually left the account.
   deployed: number;
@@ -168,11 +172,17 @@ export async function getCompanySummaries(
       0,
     );
     const companyIsDead = company.status === "SHUT_DOWN";
+    // Every position, not any: a refunded first cheque alongside a live
+    // follow-on is still a live holding.
+    const refunded =
+      company.positions.length > 0 &&
+      company.positions.every((position) => position.status === "REFUNDED");
 
     const mark = {
       shareCount: shareCount > 0 ? shareCount : null,
       latestPricePerShare: latestPriced ? toNumber(latestPriced.pricePerShare) : null,
       companyIsDead,
+      refunded,
     };
 
     const unrealized = unrealizedValue(flows, mark);
@@ -211,6 +221,7 @@ export async function getCompanySummaries(
       website: company.website,
       sector: company.sector,
       status: company.status,
+      refunded,
       stage: company.stage,
       deployed: totalDeployed(flows),
       invested: costBasis(flows),
@@ -278,6 +289,10 @@ export interface PortfolioTotals {
   activeCount: number;
   deadCount: number;
   exitedCount: number;
+  /// Companies whose money all came back. Counted apart from the live ones: a
+  /// refunded position is not exposure, and calling it active overstates how
+  /// many bets are running.
+  refundedCount: number;
 }
 
 export function rollUp(summaries: CompanySummary[]): PortfolioTotals {
@@ -296,9 +311,10 @@ export function rollUp(summaries: CompanySummary[]): PortfolioTotals {
     totalValue: realized + unrealized,
     moic: deployed > 0 ? (realized + unrealized) / deployed : null,
     companyCount: summaries.length,
-    activeCount: summaries.filter((c) => c.status === "ACTIVE").length,
+    activeCount: summaries.filter((c) => c.status === "ACTIVE" && !c.refunded).length,
     deadCount: summaries.filter((c) => c.status === "SHUT_DOWN").length,
     exitedCount: summaries.filter((c) => c.status === "ACQUIRED" || c.status === "IPO").length,
+    refundedCount: summaries.filter((c) => c.refunded).length,
   };
 }
 
