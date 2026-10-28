@@ -231,7 +231,10 @@ export async function scanForCompanies(
   // Keyed by company, across every sender. A syndicate, a bank, an e-signature
   // provider and the investor's own reply all describe one deal, and keying by
   // sender is what turned that into four cards and three positions.
-  const byCompany = new Map<string, { proposal: Proposal; domains: Set<string> }>();
+  const byCompany = new Map<
+    string,
+    { proposal: Proposal; domains: Set<string>; evidence: Set<string> }
+  >();
 
   for (const group of groups) {
     // Every email from this sender is read, in batches. Sampling was the
@@ -277,9 +280,16 @@ export async function scanForCompanies(
         if (!key) continue;
 
         const entry = byCompany.get(key);
+        // The evidence for THIS company: the ids of the emails in the batch it
+        // was found in, accumulated across batches and senders. A set, because
+        // two companies in one batch each rest on all of it, and the same
+        // email can be read again by a later scan.
+        const evidence = entry?.evidence ?? new Set<string>();
+        for (const email of batch) evidence.add(email.gmailMessageId);
         byCompany.set(key, {
           proposal: mergeProposals(entry?.proposal, proposal),
           domains: (entry?.domains ?? new Set<string>()).add(group.domain),
+          evidence,
         });
       }
 
@@ -346,7 +356,7 @@ export async function scanForCompanies(
         sourceDomains: [...domains],
         investmentGroup: proposal.investmentGroup,
         payload: proposal,
-        emailCount: emails.length,
+        emailCount: entry.evidence.size,
         confidence: proposal.confidence,
         state: "PROPOSED",
       },
@@ -355,6 +365,10 @@ export async function scanForCompanies(
         sourceDomains: [...domains],
         investmentGroup: proposal.investmentGroup,
         payload: proposal,
+        // Added, not replaced. A run only reads mail no run has read before,
+        // so the evidence from this one is new on top of what an earlier scan
+        // already counted.
+        emailCount: (existing?.emailCount ?? 0) + entry.evidence.size,
         confidence: proposal.confidence,
         state: "PROPOSED",
       },

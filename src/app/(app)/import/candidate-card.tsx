@@ -32,8 +32,14 @@ export function CandidateCard({
           rather than creating a second entry. Edit the name below to keep them separate.
         </p>
       )}
+      {/* items-end, not items-center: each field is a label stacked on an
+          input, so it is taller than a bare button, and centring hung the
+          buttons above the inputs they belong to. Aligning the bottoms puts
+          every control on one line, and the inputs borrow the shared control
+          geometry so they are the same height as the buttons rather than
+          nearly. See the note on ControlRow. */}
       <form
-        className="flex flex-wrap items-center gap-2"
+        className="flex flex-wrap items-end gap-2"
         action={async (form) => {
           setPending(true);
           const result = await importCandidate(form);
@@ -42,41 +48,41 @@ export function CandidateCard({
         }}
       >
         <input type="hidden" name="id" value={id} />
-        <label className="text-sm">
+        <label className="min-w-32 flex-1 text-sm">
           <span className="text-xs text-muted">Name</span>
           <input
             name="name"
             defaultValue={name}
-            className="mt-1 block rounded-md border border-border bg-surface px-2 py-1 text-sm"
+            className={`mt-1 block w-full ${CONTROL_SECONDARY}`}
           />
         </label>
-        <label className="text-sm">
+        <label className="min-w-32 flex-1 text-sm">
           <span className="text-xs text-muted">Website</span>
           <input
             name="website"
             defaultValue={website}
-            className="mt-1 block rounded-md border border-border bg-surface px-2 py-1 text-sm"
+            className={`mt-1 block w-full ${CONTROL_SECONDARY}`}
           />
         </label>
-        <label className="text-sm">
+        <label className="min-w-32 flex-1 text-sm">
           <span className="text-xs text-muted">Sector</span>
           <input
             name="sector"
             defaultValue={sector}
-            className="mt-1 block rounded-md border border-border bg-surface px-2 py-1 text-sm"
+            className={`mt-1 block w-full ${CONTROL_SECONDARY}`}
           />
         </label>
         <button
           type="submit"
           disabled={pending}
-          className={CONTROL_PRIMARY}
+          className={`shrink-0 ${CONTROL_PRIMARY}`}
         >
           {pending ? "Importing…" : mergeHint ? "Merge In" : "Import"}
         </button>
         <button
           type="submit"
           formAction={dismissCandidate}
-          className={CONTROL_SECONDARY}
+          className={`shrink-0 ${CONTROL_SECONDARY}`}
         >
           Not an Investment
         </button>
