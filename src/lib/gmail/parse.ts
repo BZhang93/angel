@@ -291,6 +291,18 @@ export function listAttachments(part: GmailPart | undefined): EmailAttachment[] 
 /// thirty slides of noise with no binding terms; a signed SAFE is the terms.
 const READABLE_MIME_TYPES = ["application/pdf"];
 
+/// Whether an attachment is a document at all, as opposed to the furniture of
+/// an HTML email. Images are the whole of it in practice: a backfill over a
+/// real mailbox recorded seventy-two logos and signature graphics as documents
+/// before this existed. Worth keeping separate from isWorthReading, which asks
+/// whether to spend bytes on something already known to be a document.
+export function isDocumentAttachment(attachment: EmailAttachment): boolean {
+  if (attachment.mimeType.startsWith("image/")) return false;
+  if (attachment.mimeType === "text/calendar") return false;
+  // A tiny file is a tracking pixel or a stub, never an agreement.
+  return attachment.sizeBytes > 4 * 1024;
+}
+
 export function isWorthReading(
   attachment: EmailAttachment,
   opts: { maxBytes?: number } = {},

@@ -7,10 +7,12 @@ import {
   listAttachments,
   parseFrom,
   isBulkMail,
+  isDocumentAttachment,
   looksTruncated,
   parseMessage,
   stripHtml,
   stripQuotedReplies,
+  type EmailAttachment,
   type GmailMessage,
 } from "./parse";
 
@@ -348,5 +350,33 @@ describe("isBulkMail", () => {
 
   it("leaves a personal email alone", () => {
     expect(isBulkMail(withHeaders([{ name: "From", value: "jane@acme.com" }]))).toBe(false);
+  });
+});
+
+describe("isDocumentAttachment", () => {
+  function attachment(overrides: Partial<EmailAttachment>): EmailAttachment {
+    return {
+      filename: "file.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 250_000,
+      attachmentId: "a1",
+      ...overrides,
+    };
+  }
+
+  it("keeps a signed agreement", () => {
+    expect(isDocumentAttachment(attachment({ filename: "Subscription Agreement.pdf" }))).toBe(true);
+  });
+
+  it("drops the logo at the bottom of an HTML email", () => {
+    // A real backfill recorded seventy-two of these as documents.
+    expect(isDocumentAttachment(attachment({ mimeType: "image/png", filename: "logo.png" }))).toBe(
+      false,
+    );
+  });
+
+  it("drops a calendar invite and a tracking pixel", () => {
+    expect(isDocumentAttachment(attachment({ mimeType: "text/calendar" }))).toBe(false);
+    expect(isDocumentAttachment(attachment({ sizeBytes: 900 }))).toBe(false);
   });
 });

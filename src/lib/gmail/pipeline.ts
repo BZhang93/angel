@@ -4,6 +4,7 @@ import { decryptSecret } from "@/lib/crypto";
 import { accessTokenFromRefresh, watchMailbox } from "./client";
 import { syncGmail } from "./sync";
 import { discoverUpdates } from "./discover";
+import { backfillAttachments } from "./backfill-attachments";
 import { scanCompanyUpdates } from "./refresh";
 import { rematchPendingUpdates } from "./rematch";
 import { recordWireInstructionFees } from "@/lib/import/wire-fees";
@@ -28,6 +29,10 @@ export interface PipelineResult {
   /// False while discovery still has older mail to walk back through, so a
   /// first sync on a large mailbox can say that it is not finished yet.
   backfilled: boolean;
+  /// Attachments collected from mail that was stored without them.
+  attachmentsFound: number;
+  /// False while older mail still has unchecked attachments.
+  attachmentsChecked: boolean;
   filed: number;
   extracted: number;
   documents: number;
@@ -72,6 +77,13 @@ export async function runIngestPipeline(
       : { created: 0, refused: 0, documents: 0, backfilled: true };
 
   const rematch = await rematchPendingUpdates(userId);
+
+  // Before extraction, so a signed agreement collected on this run is read on
+  // this run rather than the next one. Gmail only, no model calls.
+  const attachments = deep
+    ? await backfillAttachments(userId)
+    : { stored: 0, recorded: 0, complete: true };
+
   await fetchPendingLinks(userId);
   const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 60 });
   const documents = await extractPendingDocuments(userId);
@@ -99,6 +111,8 @@ export async function runIngestPipeline(
     fees: wireFees.feesRecorded,
     pending: rematch.stillPending,
     backfilled: discovery.backfilled,
+    attachmentsFound: attachments.recorded,
+    attachmentsChecked: attachments.complete,
     ...(extraction.failureReason ? { extractionError: extraction.failureReason } : {}),
   };
 }

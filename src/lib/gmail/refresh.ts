@@ -100,6 +100,8 @@ export async function scanCompanyUpdates(
           links: email.links,
           matchConfidence: 1,
           reviewState: "CONFIRMED",
+          // Attachments are fetched below, as the row is stored.
+          attachmentsCheckedAt: new Date(),
         },
       });
       created += 1;

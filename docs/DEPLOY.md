@@ -115,7 +115,27 @@ granted consent, which is the most confusing possible moment to fail.
 knowingly: in Testing, Google expires refresh tokens after seven days, so every
 connected account silently stops syncing a week after it connects.
 
-## 5. Before you open it to anyone else
+## 5. DocuSign is deliberately not connected
+
+The integration is built and works, and it is not worth turning on. Going live
+needs two things DocuSign will not grant a personal account: an email on a
+company domain, and a production account on a tier that supports API
+integrations. The consent screen hands out a developer sandbox instead, which
+contains none of the user's real agreements, so a pull against it returns zero
+and looks like a bug.
+
+Nothing is lost by leaving it off. Every signed agreement arrives as a PDF
+attached to the DocuSign completion email, and the attachment backfill in
+`lib/gmail/backfill-attachments.ts` collects those on the hourly run. What the
+API would add is narrow: envelopes whose sender did not attach the documents,
+and DocuSign's structured form fields, which can be more reliable than reading
+the PDF.
+
+There is no Disconnect button, so a sandbox connection stays on the Settings
+page looking healthy. An empty pull now names the account it searched and says
+whether it was the sandbox, which is the next best thing.
+
+## 6. Before you open it to anyone else
 
 Two things are open by design for a single user and are not safe once a stranger
 can sign up.
@@ -130,7 +150,7 @@ can sign up.
   so the next action written is one forgotten `userId` away from showing one
   investor another's portfolio.
 
-## 6. First deploy
+## 7. First deploy
 
 1. Migrations applied to the production database (step 1).
 2. Deploy.

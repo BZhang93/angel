@@ -93,6 +93,9 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
         // and never reached extraction. fetchPendingLinks iterates this column.
         links: email.links,
         ingestIssue: email.truncated ? "TRUNCATED_BODY" : null,
+        // This path fetches attachments as it stores the row, so the backfill
+        // has nothing to do here.
+        attachmentsCheckedAt: new Date(),
         matchConfidence: match?.confidence ?? null,
         // Only a certain match is confirmed outright. Everything else waits for
         // a human, which is what keeps a mis-filed update from silently

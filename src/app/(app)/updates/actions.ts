@@ -185,6 +185,10 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
         // Silence here is what hid the backlog: a capped first pass reported a
         // tidy number and gave no hint that older mail was still unread.
         run.backfilled ? null : "Still working backwards through older mail; sync again to continue.",
+        run.attachmentsFound > 0
+          ? `${run.attachmentsFound} attachment${run.attachmentsFound === 1 ? "" : "s"} collected from mail stored without them.`
+          : null,
+        run.attachmentsChecked ? null : "Still checking older mail for attachments.",
         run.filed > 0 ? `${run.filed} previously unmatched email${run.filed === 1 ? "" : "s"} filed.` : null,
         `Extracted ${run.extracted} update${run.extracted === 1 ? "" : "s"}.`,
         run.documents > 0 ? `${run.documents} attachment${run.documents === 1 ? "" : "s"} read.` : null,

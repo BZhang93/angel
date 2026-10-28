@@ -2,7 +2,12 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { attachmentPath, uploadAttachment } from "@/lib/storage";
 import { getAttachment } from "./client";
-import { guessDocumentKind, isWorthReading, type EmailAttachment } from "./parse";
+import {
+  guessDocumentKind,
+  isDocumentAttachment,
+  isWorthReading,
+  type EmailAttachment,
+} from "./parse";
 import type { DocumentKind } from "@/generated/prisma/enums";
 
 // Recording and fetching email attachments.
@@ -32,6 +37,11 @@ export async function ingestAttachments(
   let failed = 0;
 
   for (const attachment of input.attachments) {
+    // Skipped before the row exists, not before the download. A logo recorded
+    // as a document is clutter in every documents list for ever, and unlike a
+    // skipped download it leaves nothing useful behind.
+    if (!isDocumentAttachment(attachment)) continue;
+
     const existing = await prisma.document.findUnique({
       where: {
         userId_gmailMessageId_gmailAttachmentId: {

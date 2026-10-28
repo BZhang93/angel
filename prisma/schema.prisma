@@ -523,6 +523,11 @@ model Update {
   /// for mail that arrived through the user's own label or a company scan,
   /// where the reason is the query itself.
   ingestReason    String?
+  /// When this email's attachments were last looked for. Null means nobody has
+  /// checked: the import scan stores mail without fetching attachments, and the
+  /// sync never revisits a stored message id, so without a backfill those
+  /// attachments are lost for good. See the attachment backfill in lib/gmail.
+  attachmentsCheckedAt DateTime?
   /// When the import scan last read this email looking for companies. Set once
   /// a batch containing it completes, so a rescan only pays to read what is
   /// new: the expensive half of a scan is the model, not the fetch.

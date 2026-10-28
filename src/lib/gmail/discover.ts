@@ -150,6 +150,9 @@ export async function discoverUpdates(
           subject: email.subject,
           rawText: email.text,
           ingestIssue: email.truncated ? "TRUNCATED_BODY" : null,
+          // This path fetches attachments as it stores the row, so the backfill
+          // has nothing to do here.
+          attachmentsCheckedAt: new Date(),
           ingestReason: verdict.reason,
           matchConfidence: match?.confidence ?? null,
           // Always pending, unlike the labelled sync and the company scan.

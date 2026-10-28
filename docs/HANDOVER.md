@@ -59,7 +59,7 @@ Ordered, because the first item blocks the two after it. Last revised 2026-10-04
    the steps that need a human at a dashboard marked. The short version: a separate Supabase
    project for production, the pooler for `DATABASE_URL` with `DIRECT_URL` left unset in Vercel,
    migrations run from a laptop, Node 22, a fresh `APP_ENCRYPTION_KEY` that then never changes,
-   and the production redirect URIs added to the Google OAuth client. Read section 5 of it before
+   and the production redirect URIs added to the Google OAuth client. Read section 6 of it before
    letting anyone else sign up: sign-up is unrestricted and the tenant boundary is `where:
    { userId }` with no test behind it.
 
