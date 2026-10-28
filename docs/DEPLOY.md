@@ -52,15 +52,20 @@ executes the whole pipeline for every opted-in account, two at a time, including
 dozens of model calls and several Gmail searches, and on the default timeout it
 is killed partway through.
 
-**Check the plan's ceiling before trusting that number.** Vercel caps function
-duration by plan, and the Hobby tier's limit is well below 300 seconds, so on
-Hobby the declaration does not buy what it claims and the cron can still be cut
-off mid-run. Find the limit under the account or team's Settings, Billing, then
-set the route's value and this note to the real ceiling.
+300 is Hobby's maximum, so the route already asks for everything the plan
+allows and nothing needs changing to deploy there. Paid plans allow more, which
+is the lever if the hourly run ever outgrows five minutes.
 
-A killed run is safe to repeat: every ingest path deduplicates on the Gmail
-message id, and discovery keeps a cursor, so the next run resumes rather than
-starts over.
+Outgrowing it is survivable rather than urgent, because a killed run is safe to
+repeat: every ingest path deduplicates on the Gmail message id, discovery keeps
+a cursor, and extraction only selects updates with no `extractedAt`. The next
+run resumes instead of starting over or double-counting. The cost of hitting the
+ceiling is a slower catch-up, not lost or duplicated data.
+
+What would actually push it over is account count rather than mailbox size: the
+cron runs accounts two at a time, so the duration scales with how many have
+auto-sync on. One account's first sync is the other heavy case, and discovery
+bounds that by design, one backfill page per run.
 
 ### The cron secret
 
