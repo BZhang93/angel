@@ -15,6 +15,8 @@ export interface KeyDate {
   companyName: string;
   label: string;
   detail?: string;
+  /// Set only for ACTION, the one kind a person can clear.
+  actionItemId?: string;
 }
 
 export async function getKeyDates(
@@ -71,11 +73,16 @@ export async function getKeyDates(
       companyName: action.company.name,
       label: action.title,
       detail: action.detail ?? undefined,
+      // Carried so the dashboard can clear the thing it is showing. An action
+      // item is the only kind a person can act on: a QSBS date is a fact about
+      // the calendar, not a task.
+      actionItemId: action.id,
     });
   }
 
-  // Overdue items stay visible: a missed pro-rata deadline is still worth
-  // knowing about. Only the far future is trimmed.
+  // Overdue items are kept here and sorted out by the caller: /calendar wants
+  // the whole record, and the dashboard wants only what is still worth doing.
+  // See shapeKeyDates, which decides how overdue is too overdue.
   return dates
     .filter((entry) => entry.daysAway <= horizonDays)
     .sort((a, b) => a.date.getTime() - b.date.getTime());

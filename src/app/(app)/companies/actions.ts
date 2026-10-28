@@ -253,6 +253,47 @@ export async function completeActionItem(form: FormData): Promise<void> {
   revalidatePath("/", "layout");
 }
 
+/// Clears one reminder without claiming it was done. DISMISSED exists for
+/// exactly this: an ask that is no longer worth tracking, which is not the same
+/// as an ask that was carried out, and the distinction is worth keeping because
+/// extraction will happily re-raise what it still sees in the mail.
+export async function dismissActionItem(form: FormData): Promise<void> {
+  const userId = await requireUserId();
+  const id = str(form, "id");
+
+  const updated = await prisma.actionItem.updateMany({
+    where: { id, userId, state: "OPEN" },
+    data: { state: "DISMISSED" },
+  });
+  if (updated.count === 0) throw new Error("Action item not found.");
+
+  revalidatePath("/", "layout");
+}
+
+/// Clears every reminder whose date is long past, in one go.
+///
+/// This is the pile the dashboard used to be made of: six near-identical asks
+/// from one closed deal, the oldest 171 days overdue. Dismissing them one by
+/// one is the work the card was creating instead of saving.
+export async function dismissStaleActionItems(
+  olderThanDays = 30,
+): Promise<{ status: "ok" | "error"; message: string }> {
+  const userId = await requireUserId();
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+
+  const cleared = await prisma.actionItem.updateMany({
+    where: { userId, state: "OPEN", dueDate: { lt: cutoff } },
+    data: { state: "DISMISSED" },
+  });
+  if (cleared.count === 0) return { status: "error", message: "Nothing stale to clear." };
+
+  revalidatePath("/", "layout");
+  return {
+    status: "ok",
+    message: `Cleared ${cleared.count} reminder${cleared.count === 1 ? "" : "s"} whose date has passed.`,
+  };
+}
+
 export async function updateCompanyStatus(form: FormData): Promise<void> {
   const userId = await requireUserId();
   const id = str(form, "id");

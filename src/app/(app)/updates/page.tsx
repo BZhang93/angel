@@ -50,8 +50,8 @@ export default async function UpdatesPage() {
         {pending.length} update{pending.length === 1 ? "" : "s"} could not be matched confidently,
         grouped by their suggested company and oldest first.{" "}
         {suggested > 0
-          ? "Confirm a whole group at once, or assign a row on its own if it belongs elsewhere."
-          : "Assign each to a company, which extracts it immediately."}
+          ? "Select a group, or any part of one, to assign or clear it in a single decision."
+          : "Select what belongs together, assign it to a company, and clear the rest."}
       </p>
 
       <div className="space-y-6">
@@ -60,6 +60,7 @@ export default async function UpdatesPage() {
             key={group.companyId ?? "unassigned"}
             companyId={group.companyId}
             companyName={group.companyName}
+            companies={companies}
             items={group.items.map((update) => ({
               id: update.id,
               render: (

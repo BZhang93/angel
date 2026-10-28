@@ -13,6 +13,8 @@ import {
   rollUp,
 } from "@/lib/data/portfolio";
 import { getKeyDates } from "@/lib/data/calendar";
+import { shapeKeyDates } from "@/lib/key-dates";
+import { KeyDatesCard } from "./key-dates-card";
 import { getVehicles } from "@/lib/data/vehicles";
 import { money, multiple, percent, relativeDays, shortDate } from "@/lib/format";
 import { requireUserId } from "@/lib/session";
@@ -26,7 +28,23 @@ export default async function DashboardPage() {
   // Companies proved by investor updates but with no cheque on file. Worth
   // surfacing: they are silently missing from every total.
   const unrecorded = summaries.filter((company) => company.positionCount === 0).length;
-  const keyDates = (await getKeyDates(userId, { asOf, horizonDays: 180 })).slice(0, 6);
+  // Shaped rather than sliced. A plain slice of the soonest six was how the
+  // card came to show nothing but the past: every date it had was overdue, and
+  // six of the eight belonged to one closed deal.
+  const HORIZON_DAYS = 180;
+  const shaped = shapeKeyDates(
+    await getKeyDates(userId, { asOf, horizonDays: HORIZON_DAYS }),
+    { limit: 5 },
+  );
+  const toCardDate = (entry: (typeof shaped)["upcoming"][number]) => ({
+    kind: entry.kind,
+    dateLabel: shortDate(entry.date),
+    relative: relativeDays(entry.daysAway),
+    companyId: entry.companyId,
+    companyName: entry.companyName,
+    label: entry.label,
+    actionItemId: entry.actionItemId,
+  });
   const vehicles = await getVehicles(userId);
   const unreconciled = await prisma.payment.findMany({
     where: { userId, state: { in: ["DISCREPANCY", "UNMATCHED"] } },
@@ -189,28 +207,13 @@ export default async function DashboardPage() {
           )}
         </Card>
 
-        <Card title="Next 180 Days">
-          {keyDates.length === 0 ? (
-            <p className="py-4 text-sm text-muted">Nothing due in the next six months.</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {keyDates.map((entry, index) => (
-                <li key={`${entry.companyId}-${entry.kind}-${index}`} className="flex items-baseline justify-between gap-3 py-2">
-                  <div className="min-w-0">
-                    <Link href={`/companies/${entry.companyId}`} className="text-sm font-medium hover:underline">
-                      {entry.companyName}
-                    </Link>
-                    <p className="truncate text-sm text-muted">{entry.label}</p>
-                  </div>
-                  <div className="tabular shrink-0 text-right text-xs text-muted">
-                    <div>{shortDate(entry.date)}</div>
-                    <div>{relativeDays(entry.daysAway)}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+        <KeyDatesCard
+          upcoming={shaped.upcoming.map(toCardDate)}
+          overdue={shaped.overdue.map(toCardDate)}
+          staleCount={shaped.stale.length}
+          hidden={shaped.hidden}
+          horizonDays={HORIZON_DAYS}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

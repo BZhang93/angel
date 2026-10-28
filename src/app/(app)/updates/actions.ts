@@ -18,6 +18,12 @@ import { extractionErrorMessage } from "@/lib/ai/errors";
 
 export type UpdateActionResult = { status: "error"; message: string } | { status: "ok"; message: string } | void;
 
+/// A bulk result carries the ids it changed when the change is reversible, so
+/// the UI can offer an undo rather than an apology.
+export type BulkResult =
+  | { status: "error"; message: string }
+  | { status: "ok"; message: string; undoIds?: string[] };
+
 /// Assigns a pending update to a company and immediately extracts it, so the
 /// review queue is one click rather than two screens.
 export async function confirmUpdate(form: FormData): Promise<UpdateActionResult> {
@@ -248,6 +254,56 @@ export async function runDocusignSync(): Promise<UpdateActionResult> {
       message: error instanceof Error ? error.message : "DocuSign sync failed.",
     };
   }
+}
+
+/// Rejects a selection in one go: the bulk form of "Not an Update".
+///
+/// Scoped to what is still pending, so a stale page cannot un-file something
+/// already assigned, and it returns the ids it actually changed so the caller
+/// can offer an undo. Nothing is deleted; rejecting is a state, which is what
+/// makes undo possible at all.
+export async function rejectUpdates(updateIds: string[]): Promise<BulkResult> {
+  const userId = await requireUserId();
+  if (updateIds.length === 0) return { status: "error", message: "Select an update first." };
+
+  const targets = await prisma.update.findMany({
+    where: { id: { in: updateIds }, userId, reviewState: "PENDING" },
+    select: { id: true },
+  });
+  if (targets.length === 0) return { status: "error", message: "Nothing left to clear." };
+
+  const ids = targets.map((target) => target.id);
+  await prisma.update.updateMany({
+    where: { id: { in: ids }, userId },
+    data: { reviewState: "REJECTED" },
+  });
+
+  revalidatePath("/", "layout");
+  return {
+    status: "ok",
+    message: `Cleared ${ids.length} update${ids.length === 1 ? "" : "s"}.`,
+    undoIds: ids,
+  };
+}
+
+/// Puts rejected updates back in the queue. The undo for the action above, and
+/// the only way back from a rejection: nothing else in the app returns a
+/// rejected row to review.
+export async function restoreUpdates(updateIds: string[]): Promise<BulkResult> {
+  const userId = await requireUserId();
+  if (updateIds.length === 0) return { status: "error", message: "Nothing to restore." };
+
+  const restored = await prisma.update.updateMany({
+    where: { id: { in: updateIds }, userId, reviewState: "REJECTED" },
+    data: { reviewState: "PENDING" },
+  });
+  if (restored.count === 0) return { status: "error", message: "Nothing to restore." };
+
+  revalidatePath("/", "layout");
+  return {
+    status: "ok",
+    message: `Restored ${restored.count} update${restored.count === 1 ? "" : "s"} to the queue.`,
+  };
 }
 
 /// Turns discovery of unlabelled mail on or off. Separate from auto-sync
