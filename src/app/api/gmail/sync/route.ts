@@ -9,6 +9,11 @@ import { mapWithConcurrency } from "@/lib/concurrency";
 // Two callers: the Settings button (a signed-in user) and the hourly Vercel
 // cron (no session, so it authenticates with CRON_SECRET instead).
 
+// The pipeline makes dozens of model calls per account and several Gmail
+// searches, so the default function timeout kills it partway and leaves the run
+// half done. Vercel caps this by plan; it is the ceiling, not a target.
+export const maxDuration = 300;
+
 /// The accounts a scheduled run should sync: every account that asked for it,
 /// not the first one found. With one user those are the same thing, which is
 /// why syncing only the first went unnoticed; with two, the second user's mail

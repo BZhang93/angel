@@ -88,6 +88,10 @@ export async function syncGmail(userId: string, opts: { maxMessages?: number } =
         fromName: email.fromName,
         subject: email.subject,
         rawText: email.text,
+        // The company scan stored these and the label sync did not, so a memo
+        // or call transcript linked from a labelled update was never fetched
+        // and never reached extraction. fetchPendingLinks iterates this column.
+        links: email.links,
         ingestIssue: email.truncated ? "TRUNCATED_BODY" : null,
         matchConfidence: match?.confidence ?? null,
         // Only a certain match is confirmed outright. Everything else waits for

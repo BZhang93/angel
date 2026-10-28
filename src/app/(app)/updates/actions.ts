@@ -26,11 +26,19 @@ export async function confirmUpdate(form: FormData): Promise<UpdateActionResult>
   const companyId = String(form.get("companyId") ?? "");
   if (!companyId) return { status: "error", message: "Choose a company first." };
 
+  // Scoped to what is still pending, as the bulk path already was. The failure
+  // path deliberately leaves the row on screen so its error stays readable, so
+  // a second click is now likely rather than theoretical, and extraction is not
+  // safe to run twice: applyExtraction fills gaps idempotently but recordPayment
+  // does not.
   const [update, company] = await Promise.all([
-    prisma.update.findFirst({ where: { id: updateId, userId } }),
+    prisma.update.findFirst({ where: { id: updateId, userId, reviewState: "PENDING" } }),
     prisma.company.findFirst({ where: { id: companyId, userId } }),
   ]);
-  if (!update || !company) return { status: "error", message: "Update or company not found." };
+  if (!company) return { status: "error", message: "Company not found." };
+  if (!update) {
+    return { status: "error", message: "Already filed. Reload to see where it went." };
+  }
 
   await prisma.update.update({
     where: { id: updateId },
@@ -161,9 +169,11 @@ export async function runSync(form: FormData): Promise<UpdateActionResult> {
     const run = await runIngestPipeline(userId);
     revalidatePath("/", "layout");
     return {
-      // An extraction failure is reported as an error even though ingest
-      // succeeded: filing mail nobody can read is not a working sync.
-      status: run.extractionError ? "error" : "ok",
+      // An error only when nothing at all could be read. A credential that
+      // died fails every call and must be loud; one email the model will never
+      // parse fails forever and must not redden every run after it, because an
+      // alarm that is always on is an alarm nobody reads.
+      status: run.extractionError && run.extracted === 0 ? "error" : "ok",
       message: [
         `${run.created} new (${run.unlabelled} you never labelled, ${run.pending} awaiting review).`,
         run.refused > 0 ? `${run.refused} searched and left alone.` : null,

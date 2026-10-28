@@ -37,7 +37,14 @@ export interface PipelineResult {
   extractionError?: string;
 }
 
-export async function runIngestPipeline(userId: string): Promise<PipelineResult> {
+export async function runIngestPipeline(
+  userId: string,
+  /// `deep` runs the two mailbox-wide sweeps: the company scan and discovery.
+  /// A push notification fires once per incoming email, so it passes false and
+  /// reads just that mail. Running a 365-day sweep per arriving email multiplies
+  /// Gmail quota and makes overlapping runs collide on the message-id unique.
+  opts: { deep?: boolean } = {},
+): Promise<PipelineResult> {
   const account = await prisma.gmailAccount.findUnique({ where: { userId } });
   if (!account) throw new Error("Connect Gmail first.");
 
@@ -54,10 +61,12 @@ export async function runIngestPipeline(userId: string): Promise<PipelineResult>
   const sync = account.syncQuery.trim()
     ? await syncGmail(userId)
     : { created: 0, autoMatched: 0, documents: 0 };
-  const scan = await scanCompanyUpdates(userId);
-  const discovery = account.autoDiscover
-    ? await discoverUpdates(userId, { sinceDays: account.discoverDays })
-    : { created: 0, refused: 0, documents: 0 };
+  const deep = opts.deep ?? true;
+  const scan = deep ? await scanCompanyUpdates(userId) : { created: 0, documents: 0 };
+  const discovery =
+    deep && account.autoDiscover
+      ? await discoverUpdates(userId, { sinceDays: account.discoverDays })
+      : { created: 0, refused: 0, documents: 0 };
 
   const rematch = await rematchPendingUpdates(userId);
   await fetchPendingLinks(userId);
@@ -67,6 +76,15 @@ export async function runIngestPipeline(userId: string): Promise<PipelineResult>
   // commitment the same sync just filed rather than an empty position.
   const wireFees = await recordWireInstructionFees(userId);
   await enrichCompanyProfiles(userId);
+
+  // Every path through this function has now read the mailbox, so every path
+  // records it. Only syncGmail used to, and an empty query skips syncGmail, so
+  // Settings reported "Last synced never" forever to exactly the users the new
+  // copy invites to leave the query empty.
+  await prisma.gmailAccount.update({
+    where: { userId },
+    data: { lastSyncedAt: new Date() },
+  });
 
   return {
     created: sync.created + scan.created + discovery.created,

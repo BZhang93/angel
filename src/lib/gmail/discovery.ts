@@ -97,18 +97,31 @@ const METRIC_PHRASES = ["arr", "mrr", "gmv", "churn", "runway", "burn", "headcou
 const PAPERWORK_FILENAME =
   /(safe|convertible[\s_-]?note|subscription[\s_-]?agreement|side[\s_-]?letter|term[\s_-]?sheet|stock[\s_-]?purchase|board[\s_-]?consent|cap[\s_-]?table)/i;
 
-// Mail that is never an investment, whatever else it contains. Checked first,
-// because a marketing email that happens to say "runway" must not score. Split
-// by kind only so the rejection can say which one it was.
-const MAILING_LIST_MARKERS = [
+// The plumbing a mailing tool adds to the bottom of whatever it sends. This is
+// NOT evidence against an email: a founder who sends their update through
+// Mailchimp gets this footer too, and treating it as disqualifying threw out
+// the companies that report most reliably. It only raises the bar, exactly as
+// a bulk header does.
+const MAILING_TOOL_FOOTER = [
   "unsubscribe from this list",
   "manage your preferences",
   "view this email in your browser",
+  "update your preferences",
+  "sent to you by",
+];
+
+// Promotional language, which an investor update never uses. This one really is
+// disqualifying: it is the difference between a founder telling their investors
+// about the quarter and somebody selling tickets to a webinar about runway.
+const PROMOTIONAL_MARKERS = [
   "register now",
   "save your seat",
   "early bird",
   "limited time",
   "promo code",
+  "book a demo",
+  "upgrade your plan",
+  "sponsored by",
 ];
 
 const NOTIFICATION_MARKERS = [
@@ -155,9 +168,9 @@ export function classifyMail(mail: MailShape): Verdict {
     return { keep: false, reason: `Service mail from ${sender}.`, score: 0 };
   }
 
-  const listMarkers = countPhrases(body, MAILING_LIST_MARKERS);
-  if (listMarkers.length > 0) {
-    return { keep: false, reason: `Reads as a mailing list: "${listMarkers[0]}".`, score: 0 };
+  const promotions = countPhrases(body, PROMOTIONAL_MARKERS);
+  if (promotions.length > 0) {
+    return { keep: false, reason: `Reads as marketing: "${promotions[0]}".`, score: 0 };
   }
   const notices = countPhrases(body, NOTIFICATION_MARKERS);
   if (notices.length > 0) {
@@ -195,11 +208,15 @@ export function classifyMail(mail: MailShape): Verdict {
 
   // A newsletter can still be a real update: plenty of founders send theirs
   // through a mailing tool. It just has to earn it on the deal vocabulary
-  // rather than on the subject line alone.
-  if (mail.bulk && subjectHits.length > 0 && bodyHits.length === 0 && paperwork.length === 0) {
+  // rather than on the subject line alone. A mailing-tool footer counts the
+  // same as a bulk header, since both say only how the mail was sent.
+  const sentInBulk = mail.bulk || countPhrases(body, MAILING_TOOL_FOOTER).length > 0;
+  if (sentInBulk && bodyHits.length === 0 && paperwork.length === 0) {
     return {
       keep: false,
-      reason: `Bulk mail whose only signal is the subject line (${subjectHits[0]}).`,
+      reason: subjectHits.length > 0
+        ? `Bulk mail whose only signal is the subject line ("${subjectHits[0]}").`
+        : "Bulk mail with no investment signal.",
       score,
     };
   }
@@ -230,7 +247,14 @@ export function buildDiscoveryQuery(opts: { sinceDays?: number } = {}): string {
     '"valuation cap"',
     '"term sheet"',
   ];
-  const filenameTerms = ["filename:safe", "filename:note", "filename:subscription"];
+  // No `filename:note`: it matches "meeting-notes.pdf", whose full body would
+  // then be fetched, and PAPERWORK_FILENAME has no "note" alternative that
+  // could ever score it. Pure quota for nothing.
+  const filenameTerms = ["filename:safe", "filename:subscription", "filename:spa"];
   const any = [...subjectTerms, ...bodyTerms, ...filenameTerms].join(" OR ");
-  return `(${any}) newer_than:${sinceDays}d -in:spam -in:trash`;
+  // -in:sent and -in:drafts matter more than they look. Gmail searches all mail
+  // by default, so without them the investor's own outgoing email about a wire
+  // is discovered, and content matching scores a body naming a portfolio
+  // company high enough to file it as that company's own update.
+  return `(${any}) newer_than:${sinceDays}d -in:spam -in:trash -in:sent -in:drafts -in:chats`;
 }

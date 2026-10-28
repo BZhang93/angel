@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
 import { accessTokenFromRefresh, getMessage, listMessageIds } from "./client";
 import { ingestAttachments } from "./attachments";
-import { AUTO_MATCH_THRESHOLD, bestMatch, matchCompany, type MatchCandidate } from "./match";
+import { bestMatch, matchCompany, type MatchCandidate } from "./match";
 import { matchCompanyByContent } from "./content-match";
 import { buildDiscoveryQuery, classifyMail } from "./discovery";
 
@@ -22,12 +22,11 @@ export interface DiscoverResult {
   known: number;
   /// Fetched and shown to the gate.
   examined: number;
-  /// Stored as a new Update.
+  /// Stored as a new Update, always pending review.
   created: number;
   /// Fetched, refused by the gate, and deliberately not stored. Nothing about
   /// these reaches the LLM.
   refused: number;
-  autoMatched: number;
   documents: number;
 }
 
@@ -68,7 +67,6 @@ export async function discoverUpdates(
     examined: 0,
     created: 0,
     refused: 0,
-    autoMatched: 0,
     documents: 0,
   };
 
@@ -82,6 +80,14 @@ export async function discoverUpdates(
     }
     result.examined += 1;
     if (!email.text.trim()) continue;
+
+    // The query excludes Sent, but a self-addressed copy or a Bcc to oneself
+    // still arrives in the inbox. An email the user wrote is evidence of what
+    // they said, never a company's report on itself.
+    if (email.fromAddress.toLowerCase() === account.emailAddress.toLowerCase()) {
+      result.refused += 1;
+      continue;
+    }
 
     const verdict = classifyMail({
       subject: email.subject,
@@ -103,10 +109,6 @@ export async function discoverUpdates(
         { subject: email.subject },
       ),
     );
-    // Same rule as the labelled sync: certain matches file themselves, and a
-    // body that could not be read is never confirmed on its subject alone.
-    const confident =
-      match != null && match.confidence >= AUTO_MATCH_THRESHOLD && !email.truncated;
 
     const created = await prisma.update.create({
       data: {
@@ -122,12 +124,19 @@ export async function discoverUpdates(
         ingestIssue: email.truncated ? "TRUNCATED_BODY" : null,
         ingestReason: verdict.reason,
         matchConfidence: match?.confidence ?? null,
-        reviewState: confident ? "CONFIRMED" : "PENDING",
+        // Always pending, unlike the labelled sync and the company scan.
+        // Those two know why an email is theirs: the user filed it, or the
+        // company's own domain sent it. Discovery only knows that the words
+        // looked right, and a third party merely naming a company scores high
+        // enough on content to be filed against it. Auto-confirming here would
+        // also hide the row from the one page that shows `ingestReason`, so the
+        // emails that most need a human are the ones nobody would see.
+        reviewState: "PENDING",
+        links: email.links,
       },
     });
 
     result.created += 1;
-    if (confident) result.autoMatched += 1;
 
     if (email.attachments.length > 0) {
       const attachments = await ingestAttachments(userId, {

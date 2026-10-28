@@ -39,7 +39,9 @@ export async function POST(request: Request) {
   if (!account) return NextResponse.json({ ok: true, ignored: "no matching account" });
 
   try {
-    const result = await runIngestPipeline(account.userId);
+    // Not deep: a push fires once per arriving email, and the mailbox-wide
+    // sweeps belong to the hourly run.
+    const result = await runIngestPipeline(account.userId, { deep: false });
     await ensureWatch(account.userId);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {

@@ -27,9 +27,13 @@ export function aiAuthMessage(message: string): string | null {
   // the two halves that carry the meaning rather than the whole sentence, which
   // includes a machine-specific path.
   if (/has expired and no refresh is available/i.test(message)) return EXPIRED_PROFILE;
-  if (/credentials?.*expired|expired.*access token/i.test(message)) return EXPIRED_PROFILE;
-  if (/not configured/i.test(message)) return NOT_CONFIGURED;
-  if (/\b401\b|authentication_error|invalid x-api-key/i.test(message)) return NOT_CONFIGURED;
+  if (/expired.*access token/i.test(message)) return EXPIRED_PROFILE;
+  // Narrow on purpose. A bare /not configured/ or /401/ also matches "Pub/Sub
+  // topic not configured" and a Gmail 401 from a dead refresh token, and this
+  // text tells the reader to go and fix their Anthropic key: the wrong fix,
+  // confidently stated, for a problem in another service.
+  if (/claude is not configured/i.test(message)) return NOT_CONFIGURED;
+  if (/authentication_error|invalid x-api-key/i.test(message)) return NOT_CONFIGURED;
   if (/\b429\b|rate_limit/i.test(message)) return RATE_LIMITED;
   if (/\b529\b|overloaded/i.test(message)) return OVERLOADED;
   return null;

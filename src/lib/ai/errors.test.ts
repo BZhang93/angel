@@ -47,3 +47,16 @@ describe("extractionErrorMessage", () => {
     expect(extractionErrorMessage({})).toBe("Extraction failed.");
   });
 });
+
+describe("aiAuthMessage, what it must not claim", () => {
+  it("leaves another service's failure to that service", () => {
+    // These reached extractionErrorMessage through shared call paths and were
+    // being rewritten into "set ANTHROPIC_API_KEY", which is the wrong fix
+    // stated confidently.
+    expect(aiAuthMessage("No Pub/Sub topic configured; polling instead.")).toBeNull();
+    expect(
+      aiAuthMessage("Google token refresh failed (401): invalid_client: Unauthorized"),
+    ).toBeNull();
+    expect(aiAuthMessage("Gmail /profile failed (401): bad credentials")).toBeNull();
+  });
+});

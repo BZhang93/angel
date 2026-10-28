@@ -49,11 +49,31 @@ describe("classifyMail, what it keeps", () => {
   it("keeps a founder update sent through a mailing tool, on its deal vocabulary", () => {
     // Plenty of real updates go out through Mailchimp. Bulk alone must not
     // reject, or the feature misses the companies that send most reliably.
+    //
+    // The footer is the point of this fixture. An earlier version of this test
+    // omitted it and so proved nothing: the footer text was a hard rejection
+    // forty lines above the bulk allowance, and every real Mailchimp update
+    // was being refused while this passed.
     const verdict = classifyMail(
       mail({
         subject: "Acme Monthly Update",
-        text: "We closed the bridge round at a $20M valuation cap. Pro rata rights are attached.",
+        text:
+          "We closed the bridge round at a $20M valuation cap. Pro rata rights are attached." +
+          "\n\nView this email in your browser. Unsubscribe from this list.",
         bulk: true,
+      }),
+    );
+    expect(verdict.keep).toBe(true);
+  });
+
+  it("keeps a plain update that happens to carry a mailing-tool footer", () => {
+    const verdict = classifyMail(
+      mail({
+        subject: "Acme Q3 Investor Update",
+        text:
+          "Revenue grew to $2M ARR with 11 months of runway. Our valuation cap stands." +
+          "\n\nManage your preferences | Unsubscribe from this list",
+        bulk: false,
       }),
     );
     expect(verdict.keep).toBe(true);
@@ -80,7 +100,18 @@ describe("classifyMail, what it refuses", () => {
       }),
     );
     expect(verdict.keep).toBe(false);
-    expect(verdict.reason).toContain("mailing list");
+    expect(verdict.reason).toContain("marketing");
+  });
+
+  it("refuses bulk mail whose deal words are only in the subject", () => {
+    const verdict = classifyMail(
+      mail({
+        subject: "Your Monthly Update",
+        text: "You walked 42km in October. Unsubscribe from this list.",
+        bulk: true,
+      }),
+    );
+    expect(verdict.keep).toBe(false);
   });
 
   it("refuses a receipt", () => {
@@ -144,6 +175,16 @@ describe("buildDiscoveryQuery", () => {
     expect(query).toContain("newer_than:90d");
     expect(query).toContain("-in:spam");
     expect(query).toContain("-in:trash");
+  });
+
+  it("never searches the user's own outgoing mail", () => {
+    // Gmail searches all mail by default. Without these, the investor's own
+    // email to a founder about a wire is discovered, matched to that company on
+    // content, and filed as the company's own update.
+    const query = buildDiscoveryQuery();
+    expect(query).toContain("-in:sent");
+    expect(query).toContain("-in:drafts");
+    expect(query).toContain("-in:chats");
   });
 
   it("searches subjects, bodies and attachment names", () => {
