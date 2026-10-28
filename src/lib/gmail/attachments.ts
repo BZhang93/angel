@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { attachmentPath, uploadAttachment } from "@/lib/storage";
 import { getAttachment } from "./client";
+import { companyForAttachment } from "./attachment-company";
 import {
   guessDocumentKind,
   isDocumentAttachment,
@@ -36,6 +37,12 @@ export async function ingestAttachments(
   let stored = 0;
   let failed = 0;
 
+  // Loaded once per message, and only when there is a company to contradict.
+  const companies = input.companyId
+    ? await prisma.company.findMany({ where: { userId }, select: { id: true, name: true } })
+    : [];
+  const named = companies.map((company) => ({ companyId: company.id, name: company.name }));
+
   for (const attachment of input.attachments) {
     // Skipped before the row exists, not before the download. A logo recorded
     // as a document is clutter in every documents list for ever, and unlike a
@@ -58,7 +65,9 @@ export async function ingestAttachments(
       (await prisma.document.create({
         data: {
           userId,
-          companyId: input.companyId,
+          // Not always the email's company: paperwork for a different deal
+          // attached to this one's mail is filed nowhere rather than here.
+          companyId: companyForAttachment(attachment.filename, input.companyId, named),
           updateId: input.updateId,
           kind: guessDocumentKind(attachment.filename) as DocumentKind,
           title: attachment.filename,
