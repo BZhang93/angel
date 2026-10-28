@@ -8,6 +8,7 @@ import { requireUserId } from "@/lib/session";
 import { SyncPanel } from "./sync-panel";
 import { DocusignPanel } from "./docusign-panel";
 import { AutoSyncToggle } from "./auto-sync-toggle";
+import { DiscoveryToggle } from "./discovery-toggle";
 
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const userId = await requireUserId();
@@ -52,6 +53,9 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
               to replace the saved permission. Nothing already imported is affected.
             </p>
             <SyncPanel syncQuery={account.syncQuery} pendingCount={pendingCount} />
+            <div className="border-t border-border pt-3">
+              <DiscoveryToggle enabled={account.autoDiscover} days={account.discoverDays} />
+            </div>
             <div className="border-t border-border pt-3">
               <AutoSyncToggle
                 enabled={account.autoSync}

@@ -78,6 +78,14 @@ export default async function UpdatesPage() {
                       {ingestIssueNotice(update.ingestIssue).detail}
                     </p>
                   )}
+                  {update.ingestReason != null && (
+                    /* Mail the user never filed has to say why it is here, or
+                       the queue reads as the app having rummaged. */
+                    <p className="mt-2 text-xs text-muted">
+                      <span className="font-medium text-foreground">Found unlabelled:</span>{" "}
+                      {update.ingestReason}
+                    </p>
+                  )}
                   {update.matchConfidence != null && (
                     <div className="mt-1">
                       <Pill>

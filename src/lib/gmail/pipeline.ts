@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
 import { accessTokenFromRefresh, watchMailbox } from "./client";
 import { syncGmail } from "./sync";
+import { discoverUpdates } from "./discover";
+import { scanCompanyUpdates } from "./refresh";
 import { rematchPendingUpdates } from "./rematch";
 import { recordWireInstructionFees } from "@/lib/import/wire-fees";
 import { fetchPendingLinks } from "@/lib/enrich/links";
@@ -17,6 +19,12 @@ import { extractFromUpdate } from "@/lib/extract/update";
 
 export interface PipelineResult {
   created: number;
+  /// Of `created`, how many came from mail the user never labelled: the
+  /// company scan plus discovery. Reported separately because this is the half
+  /// the user did no work for, and the half worth checking.
+  unlabelled: number;
+  /// Discovered mail the gate refused, so nothing about it was stored or read.
+  refused: number;
   filed: number;
   extracted: number;
   documents: number;
@@ -27,7 +35,27 @@ export interface PipelineResult {
 }
 
 export async function runIngestPipeline(userId: string): Promise<PipelineResult> {
-  const sync = await syncGmail(userId);
+  const account = await prisma.gmailAccount.findUnique({ where: { userId } });
+  if (!account) throw new Error("Connect Gmail first.");
+
+  // Three ways in, narrowest first, each deduplicating on the Gmail message id
+  // so an email found twice is stored once.
+  //
+  //   1. the user's own label, when they keep one.
+  //   2. the portfolio's own senders, which is certain by construction.
+  //   3. discovery, for everything never filed, gated deterministically.
+  //
+  // The order is what keeps the certain reading: a company scan files an email
+  // against the company whose domain sent it, so discovery finds nothing left
+  // to guess about.
+  const sync = account.syncQuery.trim()
+    ? await syncGmail(userId)
+    : { created: 0, autoMatched: 0, documents: 0 };
+  const scan = await scanCompanyUpdates(userId);
+  const discovery = account.autoDiscover
+    ? await discoverUpdates(userId, { sinceDays: account.discoverDays })
+    : { created: 0, refused: 0, documents: 0 };
+
   const rematch = await rematchPendingUpdates(userId);
   await fetchPendingLinks(userId);
   const extraction = await extractPendingUpdates(userId, extractFromUpdate, { limit: 60 });
@@ -38,7 +66,9 @@ export async function runIngestPipeline(userId: string): Promise<PipelineResult>
   await enrichCompanyProfiles(userId);
 
   return {
-    created: sync.created,
+    created: sync.created + scan.created + discovery.created,
+    unlabelled: scan.created + discovery.created,
+    refused: discovery.refused,
     filed: rematch.matched,
     extracted: extraction.extracted,
     documents: documents.extracted,

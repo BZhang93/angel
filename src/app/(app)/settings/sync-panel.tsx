@@ -47,8 +47,9 @@ export function SyncPanel({
           </button>
         </div>
         <p className="text-xs text-muted">
-          Only messages matching this are ever read, by both sync and import. Syncing saves it.
-          Example: <code>label:investments OR from:jane@acme.com</code>
+          Optional. Leave it empty and nothing is read on your filing: the portfolio&rsquo;s own
+          senders are always scanned, and finding unlabelled mail is the switch below. Example:{" "}
+          <code>label:investments OR from:jane@acme.com</code>
         </p>
       </form>
 

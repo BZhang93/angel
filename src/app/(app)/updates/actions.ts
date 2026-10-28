@@ -10,9 +10,8 @@ import { extractPendingDocuments } from "@/lib/extract/apply-document";
 import { fetchPendingLinks } from "@/lib/enrich/links";
 import { enrichCompanyProfiles } from "@/lib/enrich/company";
 import { syncDocusign } from "@/lib/docusign/sync";
-import { syncGmail } from "@/lib/gmail/sync";
 import { rematchPendingUpdates } from "@/lib/gmail/rematch";
-import { ensureWatch } from "@/lib/gmail/pipeline";
+import { ensureWatch, runIngestPipeline } from "@/lib/gmail/pipeline";
 import { scanCompanyUpdates } from "@/lib/gmail/refresh";
 import { syncErrorMessage } from "@/lib/gmail/auth-error";
 
@@ -132,37 +131,29 @@ export async function rejectUpdate(form: FormData): Promise<void> {
 /// save-then-sync: a query you can see but have not saved is a trap.
 export async function runSync(form: FormData): Promise<UpdateActionResult> {
   const userId = await requireUserId();
+  // An empty query is now a real choice rather than an error: the company scan
+  // and discovery both work without one, and insisting on a label is exactly
+  // the manual filing this removes.
   const syncQuery = String(form.get("syncQuery") ?? "").trim();
-  if (!syncQuery) return { status: "error", message: "A Gmail query is required." };
 
   const updated = await prisma.gmailAccount.updateMany({ where: { userId }, data: { syncQuery } });
   if (updated.count === 0) return { status: "error", message: "Connect Gmail first." };
 
   try {
-    const sync = await syncGmail(userId);
-    // Mail synced before a company existed matched nothing and is still
-    // pending; reconsider it now that the portfolio has more in it.
-    const rematch = await rematchPendingUpdates(userId);
-    // Linked memos and transcripts are fetched first: extraction reads them
-    // alongside the email body, so a number stated only in a call transcript
-    // still lands as a metric.
-    const links = await fetchPendingLinks(userId);
-    const extraction = await extractPendingUpdates(userId, extractFromUpdate);
-    const documents = await extractPendingDocuments(userId);
-    await enrichCompanyProfiles(userId);
+    // The shared pipeline rather than a copy of it. This button used to run its
+    // own sequence, which is how it came to miss the company scan, the wire
+    // fees and discovery: three steps the cron did and the button did not.
+    const run = await runIngestPipeline(userId);
     revalidatePath("/", "layout");
     return {
       status: "ok",
       message: [
-        `${sync.created} new (${sync.autoMatched} auto-matched, ${rematch.stillPending} awaiting review).`,
-        rematch.matched > 0
-          ? `${rematch.matched} previously unmatched email${rematch.matched === 1 ? "" : "s"} filed.`
-          : null,
-        `Extracted ${extraction.extracted} update${extraction.extracted === 1 ? "" : "s"}${extraction.failed ? `, ${extraction.failed} failed` : ""}.`,
-        sync.documents > 0 || documents.extracted > 0
-          ? `${sync.documents} attachment${sync.documents === 1 ? "" : "s"} stored, ${documents.extracted} read, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from them.`
-          : null,
-        links.fetched > 0 ? `${links.fetched} linked memo${links.fetched === 1 ? "" : "s"} or transcript${links.fetched === 1 ? "" : "s"} read.` : null,
+        `${run.created} new (${run.unlabelled} you never labelled, ${run.pending} awaiting review).`,
+        run.refused > 0 ? `${run.refused} searched and left alone.` : null,
+        run.filed > 0 ? `${run.filed} previously unmatched email${run.filed === 1 ? "" : "s"} filed.` : null,
+        `Extracted ${run.extracted} update${run.extracted === 1 ? "" : "s"}.`,
+        run.documents > 0 ? `${run.documents} attachment${run.documents === 1 ? "" : "s"} read.` : null,
+        run.fees > 0 ? `${run.fees} fee${run.fees === 1 ? "" : "s"} taken from wire instructions.` : null,
       ]
         .filter((part) => part !== null)
         .join(" "),
@@ -227,6 +218,28 @@ export async function runDocusignSync(): Promise<UpdateActionResult> {
       message: error instanceof Error ? error.message : "DocuSign sync failed.",
     };
   }
+}
+
+/// Turns discovery of unlabelled mail on or off. Separate from auto-sync
+/// because it governs what is read rather than when: a user may well want the
+/// hourly run without it reaching past the label they maintain by hand.
+export async function setAutoDiscover(form: FormData): Promise<UpdateActionResult> {
+  const userId = await requireUserId();
+  const enabled = String(form.get("enabled") ?? "") === "true";
+
+  const updated = await prisma.gmailAccount.updateMany({
+    where: { userId },
+    data: { autoDiscover: enabled },
+  });
+  if (updated.count === 0) return { status: "error", message: "Connect Gmail first." };
+
+  revalidatePath("/settings");
+  return {
+    status: "ok",
+    message: enabled
+      ? "On. The next sync will also look for investment mail you never labelled."
+      : "Off. Only your query and the portfolio's own senders are read now.",
+  };
 }
 
 /// Turns automatic syncing on or off.

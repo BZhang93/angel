@@ -6,6 +6,7 @@ import {
   isWorthReading,
   listAttachments,
   parseFrom,
+  isBulkMail,
   looksTruncated,
   parseMessage,
   stripHtml,
@@ -329,5 +330,23 @@ describe("extractLinks", () => {
     expect(links).toHaveLength(1);
     expect(links[0]).toContain("id=7");
     expect(links[0]).not.toContain("utm_");
+  });
+});
+
+describe("isBulkMail", () => {
+  function withHeaders(headers: { name: string; value: string }[]): GmailMessage {
+    return { id: "m1", payload: { headers, mimeType: "text/plain", body: { data: "" } } };
+  }
+
+  it("spots a mailing tool by List-Unsubscribe", () => {
+    expect(isBulkMail(withHeaders([{ name: "List-Unsubscribe", value: "<https://x/u>" }]))).toBe(true);
+  });
+
+  it("spots the older Precedence convention", () => {
+    expect(isBulkMail(withHeaders([{ name: "Precedence", value: "Bulk" }]))).toBe(true);
+  });
+
+  it("leaves a personal email alone", () => {
+    expect(isBulkMail(withHeaders([{ name: "From", value: "jane@acme.com" }]))).toBe(false);
   });
 });

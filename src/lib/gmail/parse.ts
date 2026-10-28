@@ -35,6 +35,15 @@ export function header(message: GmailMessage, name: string): string | null {
   return match?.value ?? null;
 }
 
+/// Bulk mail declares itself in its headers. Any one of these is enough:
+/// List-Unsubscribe and List-Id are what a mailing tool adds, and Precedence
+/// is the older convention still used by automated senders.
+export function isBulkMail(message: GmailMessage): boolean {
+  if (header(message, "list-unsubscribe") || header(message, "list-id")) return true;
+  const precedence = header(message, "precedence")?.trim().toLowerCase();
+  return precedence === "bulk" || precedence === "list" || precedence === "junk";
+}
+
 /// "Jane Founder <jane@acme.com>" into its parts. Gmail is inconsistent about
 /// quoting and angle brackets, so this handles a bare address too.
 export function parseFrom(value: string | null): { name: string | null; address: string } {
@@ -320,6 +329,10 @@ export interface ParsedEmail {
   truncated: boolean;
   attachments: EmailAttachment[];
   links: string[];
+  /// True when the message announces itself as bulk mail. Discovery uses it to
+  /// hold a newsletter to a higher standard than a personal email, so a
+  /// founder's update sent through a mailing tool still gets through.
+  bulk: boolean;
 }
 
 /// The richest body available for link extraction: HTML if there is any, since
@@ -355,5 +368,6 @@ export function parseMessage(message: GmailMessage): ParsedEmail {
     truncated: looksTruncated(text, body.length),
     attachments: listAttachments(message.payload),
     links: extractLinks(rawBodyFor(message.payload)),
+    bulk: isBulkMail(message),
   };
 }

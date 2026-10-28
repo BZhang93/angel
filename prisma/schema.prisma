@@ -448,6 +448,16 @@ model GmailAccount {
   /// so it has to be renewed or push silently stops.
   watchExpiresAt        DateTime?
 
+  /// Look for investment mail the user never labelled. This reads beyond
+  /// `syncQuery`, so it is a setting the user can see and switch off rather
+  /// than something the app decides for them. A deterministic gate gives the
+  /// narrowness that the label used to: only mail it accepts is stored, and
+  /// only stored mail is ever read by the LLM.
+  autoDiscover          Boolean   @default(true)
+  /// How far back discovery looks. A year catches the annual rhythm of an
+  /// angel portfolio without re-reading a decade of mail.
+  discoverDays          Int       @default(365)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -501,6 +511,11 @@ model Update {
   /// Null when the update is healthy. Set by the sync when the body looks
   /// truncated, and by extraction when it finishes empty-handed.
   ingestIssue     IngestIssue?
+  /// Why discovery stored an email the user never labelled, in words, so a row
+  /// nobody filed by hand can still explain itself in the review queue. Null
+  /// for mail that arrived through the user's own label or a company scan,
+  /// where the reason is the query itself.
+  ingestReason    String?
   /// When the import scan last read this email looking for companies. Set once
   /// a batch containing it completes, so a rescan only pays to read what is
   /// new: the expensive half of a scan is the model, not the fetch.
