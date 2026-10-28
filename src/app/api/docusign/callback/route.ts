@@ -26,6 +26,19 @@ export async function GET(request: Request) {
     const { accessToken, refreshToken } = await exchangeCode(code, docusignRedirectUri(request));
     const identity = await getIdentity(accessToken);
 
+    // Connecting a DIFFERENT account, or the same login in the other
+    // environment, means the sync cursor describes a mailbox of envelopes this
+    // connection has never seen. Keeping it would silently skip everything
+    // older than the moment the previous connection last ran, which is the
+    // whole history on a first real connection after a sandbox one.
+    const previous = await prisma.docusignAccount.findUnique({
+      where: { userId: user.id },
+      select: { accountId: true, baseUri: true },
+    });
+    const switchedAccount =
+      previous != null &&
+      (previous.accountId !== identity.accountId || previous.baseUri !== identity.baseUri);
+
     await prisma.docusignAccount.upsert({
       where: { userId: user.id },
       create: {
@@ -42,6 +55,7 @@ export async function GET(request: Request) {
         baseUri: identity.baseUri,
         docusignUserId: identity.userId || null,
         refreshTokenEncrypted: encryptSecret(refreshToken),
+        ...(switchedAccount ? { lastSyncedAt: null } : {}),
       },
     });
   } catch (error) {

@@ -244,9 +244,22 @@ export async function runDocusignSync(): Promise<UpdateActionResult> {
     const documents = await extractPendingDocuments(userId, { limit: 40 });
     revalidatePath("/", "layout");
 
+    // A pull that finds nothing has to say where it looked, or the only
+    // reading available is "DocuSign is broken". The sandbox is by far the
+    // likeliest reason, since it is what the consent screen offers by default
+    // and it contains none of your real agreements.
+    const nothing =
+      sync.envelopes === 0
+        ? ` Searched the ${sync.accountName} account${sync.sandbox ? " in DocuSign's developer sandbox" : ""} for envelopes completed since ${sync.searchedFrom.toISOString().slice(0, 10)}.${
+            sync.sandbox
+              ? " Real agreements live in your production account: set DOCUSIGN_ENV=production, promote the integration key for live use, and connect again."
+              : ""
+          }`
+        : "";
+
     return {
       status: "ok",
-      message: `${sync.envelopes} completed envelope${sync.envelopes === 1 ? "" : "s"}: ${sync.stored} stored, ${sync.matched} matched to a company, ${documents.extracted} read, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from them.${sync.failed ? ` ${sync.failed} could not be downloaded.` : ""}`,
+      message: `${sync.envelopes} completed envelope${sync.envelopes === 1 ? "" : "s"}: ${sync.stored} stored, ${sync.matched} matched to a company, ${documents.extracted} read, ${documents.filled} position${documents.filled === 1 ? "" : "s"} completed from them.${sync.failed ? ` ${sync.failed} could not be downloaded.` : ""}${nothing}`,
     };
   } catch (error) {
     return {

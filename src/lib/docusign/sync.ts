@@ -27,6 +27,14 @@ export interface DocusignSyncResult {
   stored: number;
   matched: number;
   failed: number;
+  /// True when the connected account lives in DocuSign's developer sandbox.
+  /// An empty sandbox and an empty real account look identical in the result,
+  /// and the sandbox is the overwhelmingly likelier reason to find nothing.
+  sandbox: boolean;
+  /// The account the envelopes were counted in, so a pull that finds nothing
+  /// can say where it looked.
+  accountName: string;
+  searchedFrom: Date;
 }
 
 /// Envelope subjects are usually "Please DocuSign: Acme SAFE.pdf". The company
@@ -56,11 +64,15 @@ export async function syncDocusign(
     userId: account.docusignUserId,
   };
 
-  // Re-reading from a little before the last sync is cheap insurance: envelopes
-  // complete out of order, and a missed one is invisible.
-  const fromDate =
-    account.lastSyncedAt ??
-    new Date(Date.now() - (opts.sinceDays ?? 1095) * 24 * 60 * 60 * 1000);
+  // Re-reading from a little before the last sync is cheap insurance:
+  // envelopes complete out of order, and a missed one is invisible. The
+  // comment used to say this while the code started exactly at lastSyncedAt,
+  // which bought no insurance at all; the overlap is now real. Re-reading an
+  // envelope costs nothing, since storage keys on the envelope id.
+  const OVERLAP_DAYS = 7;
+  const fromDate = account.lastSyncedAt
+    ? new Date(account.lastSyncedAt.getTime() - OVERLAP_DAYS * 24 * 60 * 60 * 1000)
+    : new Date(Date.now() - (opts.sinceDays ?? 1095) * 24 * 60 * 60 * 1000);
 
   const envelopes = await listCompletedEnvelopes(accessToken, identity, { fromDate });
   const companies = await prisma.company.findMany({
@@ -136,5 +148,13 @@ export async function syncDocusign(
     data: { lastSyncedAt: new Date() },
   });
 
-  return { envelopes: envelopes.length, stored, matched, failed };
+  return {
+    envelopes: envelopes.length,
+    stored,
+    matched,
+    failed,
+    sandbox: account.baseUri.includes("demo.docusign.net"),
+    accountName: account.accountName ?? "connected",
+    searchedFrom: fromDate,
+  };
 }
