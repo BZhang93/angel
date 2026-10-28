@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import type { DocumentKind } from "@/generated/prisma/enums";
 import { downloadAttachment } from "@/lib/storage";
 import { extractDocumentTerms, type DocumentTerms } from "./document";
 import { attachOrphanClaims, recordClaim } from "@/lib/claims";
@@ -189,12 +190,39 @@ export async function extractPendingDocuments(
   userId: string,
   opts: { limit?: number } = {},
 ): Promise<DocumentExtractionResult> {
-  const documents = await prisma.document.findMany({
-    where: { userId, extractedAt: null, storagePath: { not: null } },
-    include: { company: { select: { id: true, name: true } } },
+  // Paperwork before everything else. A run is capped, and a mailbox holds far
+  // more newsletters and decks than agreements, so reading newest-first spends
+  // the budget on the documents that cannot fill a position while a signed
+  // subscription agreement waits behind them. Kind is a filename guess, which
+  // is good enough to order by and is corrected by the read itself.
+  const BINDING: DocumentKind[] = [
+    "SAFE",
+    "NOTE",
+    "EQUITY_DOCS",
+    "SIDE_LETTER",
+    "CAP_TABLE",
+  ];
+  const limit = opts.limit ?? 20;
+  const unread = { userId, extractedAt: null, storagePath: { not: null } } as const;
+  const include = { company: { select: { id: true, name: true } } } as const;
+
+  const binding = await prisma.document.findMany({
+    where: { ...unread, kind: { in: BINDING } },
+    include,
     orderBy: { createdAt: "desc" },
-    take: opts.limit ?? 20,
+    take: limit,
   });
+  // Only then whatever else is waiting, and only if there is budget left.
+  const rest =
+    binding.length >= limit
+      ? []
+      : await prisma.document.findMany({
+          where: { ...unread, NOT: { kind: { in: BINDING } } },
+          include,
+          orderBy: { createdAt: "desc" },
+          take: limit - binding.length,
+        });
+  const documents = [...binding, ...rest];
 
   let filled = 0;
 
