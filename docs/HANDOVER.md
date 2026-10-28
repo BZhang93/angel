@@ -55,14 +55,20 @@ Ordered, because the first item blocks the two after it. Last revised 2026-10-04
    Supabase note under External services for why `where: { userId }` is the real boundary. One item cannot be done from here, the "confirm email before
    sign-in" setting, which exists only in the Supabase dashboard.
 
-5. **BRA-208, deploy.** Needs `SUPABASE_SERVICE_ROLE_KEY`, a real `ANTHROPIC_API_KEY`, a
-   `CRON_SECRET`, and a **separate Supabase project for production**. Do not point Vercel at
-   `wdtxfeciuofzyuyzzhdx`. In Vercel set `DATABASE_URL` to the pooler and do not set `DIRECT_URL`
-   at all, because its host is IPv6-only. Pick Node 22 or later while you are there: the Supabase
-   client already warns that Node 20 support is ending.
+5. **BRA-208, deploy.** The runbook is now `docs/DEPLOY.md`, written in order, with
+   the steps that need a human at a dashboard marked. The short version: a separate Supabase
+   project for production, the pooler for `DATABASE_URL` with `DIRECT_URL` left unset in Vercel,
+   migrations run from a laptop, Node 22, a fresh `APP_ENCRYPTION_KEY` that then never changes,
+   and the production redirect URIs added to the Google OAuth client. Read section 5 of it before
+   letting anyone else sign up: sign-up is unrestricted and the tenant boundary is `where:
+   { userId }` with no test behind it.
 
-6. **Then promote.** `develop` is 16 commits ahead of `main` and **none of it has been exercised in
-   a browser.** Hold the promotion until it has, then run `/code-review`, then fast-forward.
+6. **Then promote.** `main` was fast-forwarded to `develop` on 2026-10-18 after a review, and the
+   two matched at `4146a96`. **Still none of it has been exercised in a browser**, so the
+   browser pass is owed on `main` as much as it was on `develop`. The review that ran then left ten
+   findings unaddressed, four of them medium: double-settling one payment against two obligations,
+   fees booked against an unconfirmed company match, `UNFILED_MAIL` blind to pending rows, and the
+   truncation heuristic below.
 
 Known and not yet ticketed: Marr Labs carries nine stale signature reminders that only a
 "completed DocuSign envelope closes its reminders" rule would clear. Worth a ticket of its own.
@@ -157,6 +163,19 @@ Break these and the app quietly lies about money.
    and a forward puts `From:` in a header block at the top, so the marker meant for Outlook history
    discarded entire payloads. `stripQuotedReplies` skips a forward preamble before cutting. The
    test that claimed to cover this had no forward in its fixture, which is why it passed for months.
+
+15. **Searching is free, storing is the decision.** Discovery searches the whole mailbox because
+    the search happens inside Gmail and reveals nothing. Storing is what exposes an email, since a
+    stored row is later read by the LLM, so the gate in `lib/gmail/discovery.ts` is deterministic
+    and tested rather than a judgement made by another model. Mail it refuses is never stored.
+
+16. **A bulk header is not a disqualification.** Many founders send their updates through a
+    mailing tool, so List-Unsubscribe only raises the bar: such mail has to earn its way in on deal
+    vocabulary rather than on a subject line that merely reads right.
+
+17. **An email the user never filed explains itself.** Discovery records why it kept each one in
+    `ingestReason`, and the review queue shows it. Without that the queue reads as the app having
+    rummaged through the mailbox.
 
 ## External services and their traps
 
