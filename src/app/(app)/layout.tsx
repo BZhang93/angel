@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { logout } from "@/app/login/actions";
 import { currentUser } from "@/lib/session";
+import { getNavCounts } from "@/lib/data/nav-counts";
+import { badgeLabel } from "@/lib/nav-badge";
 
 const NAV = [
   { href: "/", label: "Dashboard" },
@@ -13,6 +15,13 @@ const NAV = [
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await currentUser();
+  // Signed out there is nothing to count, and the layout still renders: the
+  // login page lives under its own route but the nav must not query for a
+  // user that does not exist.
+  const counts = user ? await getNavCounts(user.id) : null;
+  const badges: Record<string, string | null> = {
+    "/updates": badgeLabel(counts?.updates ?? 0),
+  };
 
   return (
     <div className="flex min-h-full flex-col">
@@ -23,8 +32,20 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </Link>
           <nav className="flex flex-1 items-center gap-4 text-sm text-muted">
             {NAV.map((item) => (
-              <Link key={item.href} href={item.href} className="hover:text-foreground">
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center gap-1.5 hover:text-foreground"
+              >
                 {item.label}
+                {badges[item.href] && (
+                  <span
+                    title="Waiting for a decision"
+                    className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-warn/15 px-1.5 py-0.5 tabular text-[11px] font-medium text-warn"
+                  >
+                    {badges[item.href]}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>
